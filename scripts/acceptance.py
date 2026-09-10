@@ -218,7 +218,7 @@ def run():
         deadline = time.monotonic() + 90
         while True:
             try:
-                response = httpx.get(endpoint, timeout=15).raise_for_status()
+                response = httpx.get(endpoint, timeout=15, follow_redirects=True).raise_for_status()
                 if name != "Web":
                     payload = response.json()
                     required = {

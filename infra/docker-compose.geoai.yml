@@ -68,6 +68,7 @@ services:
     restart: unless-stopped
     environment:
       GEOAI_API_URL: http://api:8080
+      GEOAI_COOKIE_SECURE: ${GEOAI_COOKIE_SECURE:-false}
     ports:
       - "127.0.0.1:${GEOAI_WEB_PORT}:3000"
     healthcheck:

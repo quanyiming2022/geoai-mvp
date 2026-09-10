@@ -16,3 +16,5 @@ artifacts/
 infra/supabase/upstream/volumes/db/data/
 infra/supabase/upstream/volumes/storage/
 .DS_Store
+
+supabase/.temp/

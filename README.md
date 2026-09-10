@@ -1,7 +1,7 @@
-# GeoAI Platform · P0
+# GeoAI Platform
 唯一仓库：https://github.com/quanyiming2022/geoai-mvp
 本地目录：`/Users/quanyiming/Projects/geoai-mvp`。GitHub 仅托管代码；所有运行及验收在 Mac 本地完成。
-当前只做基础设施，无登录、业务地图或 GeoExtract 页面。P0 本机验收已通过，见 `docs/p0-validation.md`。
+P0 基础设施与 P1 Auth / Projects 已实现。验收记录见 `docs/p0-validation.md` 和 `docs/p1-validation.md`。后续阶段仅在前一阶段验证并推送后开始。
 
 ## 本地准备
 使用 Node 24.21.0（`.nvmrc`）、pnpm 12.3.4（Corepack）、Python 3.12、Docker Compose。
@@ -17,6 +17,7 @@ python3.12 -m venv .venv
 .venv/bin/python scripts/init_env.py
 sh scripts/compose.sh config --quiet
 sh scripts/compose.sh up -d --build
+.venv/bin/python scripts/migrate.py
 sh scripts/compose.sh exec -T db psql -U postgres -d postgres -c 'SELECT version(); SELECT PostGIS_Version();'
 ```
 
@@ -34,6 +35,7 @@ pnpm test
 .venv/bin/ruff check services/api scripts
 .venv/bin/python scripts/check_upstream.py
 .venv/bin/python scripts/acceptance.py
+.venv/bin/python scripts/acceptance_p1.py
 ```
 最后一条执行真实服务检查及持久化重启；服务不可用会失败，不会伪装成通过。
 打开本地 Web（端口见 `.env.example`）验证页面及 `/api/health`。
@@ -51,3 +53,16 @@ macOS shell 已通过官方 nvm 用户级安装 Node；Homebrew nvm bottle 在�
 Linux arm64 的 Rasterio 1.4.3 需要源码构建；API/Worker 镜像包含 GDAL 开发库。
 首次编译较慢，后续由 Docker 缓存复用。
 仅检查官方基础设施可运行 `scripts/acceptance.py --infrastructure-only`，这不是完整 P0 验收。
+
+## 账号与项目
+打开 `/login` 注册本地账号或登录。当前开发配置自动确认邮箱，不发送外部邮件。
+在 `/projects` 创建项目；项目所有者使用对方的账号 UUID 添加查看者或编辑者。
+账号 UUID 显示在项目列表页。所有者管理成员，编辑者修改内容，查看者只读。
+客户端不接收 Supabase service key；业务访问经 FastAPI 和用户作用域 Repository，数据库 RLS 独立限制权限。
+会话使用 HttpOnly Cookie，在访问令牌过期前续期；退出撤销刷新会话并清除 Cookie。
+Supabase 已签发的访问 JWT 按其原到期时间失效，项目成员撤销由数据库立即生效。
+HTTPS 私有化部署设置 `GEOAI_COOKIE_SECURE=true`；本机 HTTP 默认 false。
+
+迁移文件由 `pnpm dlx supabase@2.81.3 migration new <name>` 创建。
+`scripts/migrate.py` 只连接现有 Supabase 数据库，使用事务、锁和 SHA256 记录；已执行迁移不可改写。
+不用 `supabase start`，避免启动第二套数据库。私有权限函数仅用于避免递归 RLS，不暴露为 Data API RPC。

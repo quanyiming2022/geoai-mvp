@@ -9,7 +9,19 @@ from .config import Settings
 from .models import MockAdapter
 from .compute import MockComputeProvider
 
-app = FastAPI(title="GeoAI Platform", version="0.0.0")
+from .auth import router as auth_router
+from .projects import router as projects_router
+
+app = FastAPI(title="GeoAI Platform", version="0.1.0")
+app.include_router(auth_router)
+app.include_router(projects_router)
+
+
+@app.middleware("http")
+async def private_responses(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/health/live")
