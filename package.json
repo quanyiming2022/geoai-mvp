@@ -1,0 +1,15 @@
+{
+  "name": "geoai-mvp",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": "24.21.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter @geoai/web build",
+    "typecheck": "pnpm --filter @geoai/web typecheck",
+    "lint": "pnpm --filter @geoai/web lint",
+    "test": "pnpm --filter @geoai/web test"
+  }
+}

@@ -1,0 +1,81 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:${GEOAI_DB_PORT}:5432"
+    volumes:
+      - geoai-db:/var/lib/postgresql/data
+      - ../../postgis.sql:/docker-entrypoint-initdb.d/init-scripts/100-geoai.sql:ro
+  storage:
+    volumes:
+      - geoai-storage:/var/lib/storage
+    environment:
+      FILE_SIZE_LIMIT: ${STORAGE_FILE_SIZE_LIMIT}
+  imgproxy:
+    volumes:
+      - geoai-storage:/var/lib/storage
+  supavisor:
+    profiles: [pooler]
+  redis:
+    image: redis:7.2.10-alpine
+    restart: unless-stopped
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec]
+    volumes:
+      - geoai-redis:/data
+    ports:
+      - "127.0.0.1:${GEOAI_REDIS_PORT}:6379"
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: ../../../services/api
+    restart: unless-stopped
+    environment: &geoai-env
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      REDIS_URL: redis://redis:6379/0
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      ANON_KEY: ${ANON_KEY}
+      STORAGE_BUCKET: ${STORAGE_BUCKET}
+    ports:
+      - "127.0.0.1:${GEOAI_API_PORT}:8080"
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/live', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  raster-worker:
+    build: ../../../services/api
+    restart: unless-stopped
+    environment: *geoai-env
+    command: [python, -m, geoai.worker]
+    depends_on:
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, python, -c, "from redis import Redis; import os; assert Redis.from_url(os.environ['REDIS_URL']).exists('geoai:raster:heartbeat')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  web:
+    build:
+      context: ../../..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      GEOAI_API_URL: http://api:8080
+    ports:
+      - "127.0.0.1:${GEOAI_WEB_PORT}:3000"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  geoai-db:
+  geoai-storage:
+  geoai-redis:
