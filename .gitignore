@@ -18,3 +18,4 @@ infra/supabase/upstream/volumes/storage/
 .DS_Store
 
 supabase/.temp/
+apps/web/public/maplibre/

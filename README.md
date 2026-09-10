@@ -1,7 +1,7 @@
 # GeoAI Platform
 唯一仓库：https://github.com/quanyiming2022/geoai-mvp
 本地目录：`/Users/quanyiming/Projects/geoai-mvp`。GitHub 仅托管代码；所有运行及验收在 Mac 本地完成。
-P0 基础设施与 P1 Auth / Projects 已实现。验收记录见 `docs/p0-validation.md` 和 `docs/p1-validation.md`。后续阶段仅在前一阶段验证并推送后开始。
+P0 基础设施、P1 Auth / Projects 和 P2 地图工作空间已实现。验收记录见 `docs/p0-validation.md` 和 `docs/p1-validation.md`。后续阶段仅在前一阶段验证并推送后开始。
 
 ## 本地准备
 使用 Node 24.21.0（`.nvmrc`）、pnpm 12.3.4（Corepack）、Python 3.12、Docker Compose。
@@ -66,3 +66,9 @@ HTTPS 私有化部署设置 `GEOAI_COOKIE_SECURE=true`；本机 HTTP 默认 fals
 迁移文件由 `pnpm dlx supabase@2.81.3 migration new <name>` 创建。
 `scripts/migrate.py` 只连接现有 Supabase 数据库，使用事务、锁和 SHA256 记录；已执行迁移不可改写。
 不用 `supabase start`，避免启动第二套数据库。私有权限函数仅用于避免递归 RLS，不暴露为 Data API RPC。
+
+## 地图工作空间
+项目列表中的项目卡片进入 `/projects/<id>/workspace`，项目信息与成员通过右上角链接管理。
+默认地图是离线 WGS84 经纬参考网，不请求外部地图服务；支持拖动、缩放、坐标显示和重置。
+MapLibre GL 6.9.0 的 worker 与共享模块由构建脚本从锁定依赖复制到 public/maplibre，Docker 同步携带这些文件；生成文件不提交 Git。
+MapLibre 的 BSD 3-Clause 许可证保留在 docs/licenses/maplibre-gl-6.9.0.txt。工作空间权限回归：`.venv/bin/python scripts/acceptance_p2.py`。
