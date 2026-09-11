@@ -62,3 +62,18 @@ Interim snapshot: local Qwen3-4B-Instruct-2507 Q4_K_M download still pending (ab
 - This resolves local runtime/configuration readiness, not P9B GPU inference or the pending full P9C confirmation E2E gate.
 
 Browser live read-only check: new context-panel entry → Chinese status request → API → local Qwen → current project status, PASS at 8,127 ms. Screenshot `artifacts/p9c-status-live.png`. No task was created.
+
+## P9C.1 — Workspace selection context
+
+Assistant now receives explicit workspace selection (remembering raster/prompt/AOI selections independently), the visible extraction form values when present, and the current compute channel. A sole available resource may be preselected; multiple unselected resources are not guessed. The assistant exposes compact selectors for correction without typing IDs/names. Worker mode requires explicit source-pixel window coordinates and a healthy registered endpoint; AOI is never converted into a large-image inference request.
+
+`workspace_context` is optional on the new P9C planning route for backwards compatibility. Every selected identifier is validated against the authenticated project catalog before inference. Context limits decoding to selected resources; deterministic binding and the original job API retain validation and idempotency. Context changes invalidate an existing draft and its confirmation action. No changes to P8/P9 job, raster, RLS, review or export endpoints/database.
+
+Validation:
+- Backend 75 tests PASS, frontend 3 tests PASS; typecheck/lint/build PASS.
+- Real local Qwen, synthetic catalog: “用这个样例提取当前范围” generated correct selected resource parameters in 12,261 ms without names in the instruction or creating a job (`artifacts/p9c-context-readonly.json`).
+- Real browser/current project: automatically selected existing SPOT6 raster, 农田样例 and AOI 123; same short instruction produced correct draft in 10,844 ms (`artifacts/p9c-context-draft.png`). No confirmation/job creation performed.
+- Removing the prompt selection removed the old draft and confirmation button. Replanning returned the explicit missing-prompt error (`artifacts/p9c-context-missing.png`).
+- Full new-job integration acceptance remains separate/pending; prior approval-review restriction on temporary user/project creation was not bypassed.
+
+Assisted sample creation is not implemented by this increment. The text-only LLM can plan metadata/instructions but cannot infer a pixel mask. Future human-assisted sample creation needs a separate visual model (text/point/box → candidate mask → human correction → existing prompt save); do not label text output as automatic segmentation or expand to large AOI inference.

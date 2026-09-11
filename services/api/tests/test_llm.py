@@ -64,3 +64,30 @@ def test_decoding_schema_constrains_ids_to_visible_catalog():
     assert schema['properties']['endpoint_id']=={'enum':[None]}
     assert schema['additionalProperties'] is False
     assert set(schema['required'])==set(schema['properties'])
+
+
+def test_workspace_context_rejects_foreign_ids():
+    from geoai.llm import WorkspaceContext,context_resources
+    with pytest.raises(HTTPException):context_resources(WorkspaceContext(channel='mock',raster_id=uuid4()),resources())
+
+
+def test_workspace_context_never_guesses_missing_selection():
+    from geoai.llm import WorkspaceContext,context_resources,bind_workspace_intent
+    c=WorkspaceContext(channel='mock')
+    assert all(not items for items in context_resources(c,resources()).values())
+    with pytest.raises(HTTPException):bind_workspace_intent(Intent(intent='extract',channel='mock',raster_id='r',prompt_id='p',aoi_id='a'),c)
+
+
+def test_explicit_context_overrides_model_resource_choice():
+    from geoai.llm import WorkspaceContext,bind_workspace_intent
+    r,p,a=uuid4(),uuid4(),uuid4();c=WorkspaceContext(channel='mock',raster_id=r,prompt_id=p,aoi_id=a)
+    bound=bind_workspace_intent(Intent(intent='extract',channel='worker',raster_id='hallucinated'),c)
+    assert bound.channel=='mock' and bound.raster_id==str(r) and bound.prompt_id==str(p) and bound.aoi_id==str(a)
+
+
+def test_worker_context_requires_explicit_window_even_with_aoi():
+    from geoai.llm import WorkspaceContext,bind_workspace_intent
+    c=WorkspaceContext(channel='worker',raster_id=uuid4(),prompt_id=uuid4(),aoi_id=uuid4(),endpoint_id=uuid4())
+    with pytest.raises(HTTPException):bind_workspace_intent(Intent(intent='extract'),c)
+    bound=bind_workspace_intent(Intent(intent='extract'),c.model_copy(update={'query_col':0,'query_row':0}))
+    assert bound.query_col==0 and bound.query_row==0

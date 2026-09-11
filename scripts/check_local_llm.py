@@ -22,3 +22,17 @@ for text,expected in [('请查看当前项目任务状态','status'),('使用 fi
     checks.append({'request':text,'intent':intent.intent,'runtime_ms':round((time.monotonic()-started)*1000)})
     print('PASS',checks[-1],flush=True)
 Path('artifacts/p9c-local-readonly.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2))
+
+# Contextual request: no resource names appear in the user instruction.
+from geoai.llm import WorkspaceContext,context_resources,bind_workspace_intent
+context=WorkspaceContext(channel='mock',raster_id=r,prompt_id=p,aoi_id=a)
+selected=context_resources(context,resources);schema=planner_schema(selected);schema['properties']['channel']={'enum':['mock']}
+started=time.monotonic()
+raw=HttpLLMProvider(Profile(mode='local')).generate([{'role':'system','content':SYSTEM+json.dumps(schema,ensure_ascii=False)},{'role':'user','content':json.dumps({'request':'用这个样例提取当前范围','catalog':selected,'workspace_context':context.model_dump(mode='json')},ensure_ascii=False)}],schema)
+intent=bind_workspace_intent(Intent.model_validate_json(raw),context)
+assert intent.intent=='extract',intent
+job,labels=build_job(intent,resources,uuid4())
+assert str(job.raster_asset_id)==r and str(job.prompt_id)==p and str(job.aoi_id)==a
+result={'request':'用这个样例提取当前范围','runtime_ms':round((time.monotonic()-started)*1000),'labels':labels,'job_created':False}
+Path('artifacts/p9c-context-readonly.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+print('PASS: context-aware planning without repeated names',result,flush=True)
