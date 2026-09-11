@@ -164,14 +164,22 @@ def delete_endpoint(endpoint_id:UUID,current:CurrentUser):
 def test_endpoint(endpoint_id:UUID,current:CurrentUser):
     repo=EndpointRepository(current.user['id'])
     endpoint=repo.endpoint(endpoint_id)
-    if not endpoint['enabled']:
-        raise HTTPException(409,'Enable this server before testing')
+    status,code,info=probe_endpoint(endpoint)
+    now=datetime.now(timezone.utc)
+    saved=repo.execute("UPDATE geoai_internal.model_endpoints SET health_status=%s,health_code=%s,model_info=%s,last_checked_at=%s,last_healthy_at=CASE WHEN %s='healthy' THEN %s ELSE last_healthy_at END WHERE id=%s AND config_revision=%s RETURNING id",(status,code,Jsonb(info),now,status,now,endpoint_id,endpoint['config_revision']))
+    if not saved:
+        raise HTTPException(409,'Configuration changed during test; test the current configuration again')
+    return {'status':status,'code':code,'model_info':info,'checked_at':now}
+
+
+def probe_endpoint(endpoint):
+    """Read-only diagnostics shared by admin tests and the internal monitor."""
     status,code,info='healthy',None,{}
     provider=None
     try:
         if endpoint['provider_type']!='lan_http':
             raise ModelWorkerError('healthcheck_failed')
-        provider=LanHttpComputeProvider(endpoint,allowed_hosts=allowed_hosts())
+        provider=LanHttpComputeProvider(endpoint,allowed_hosts=allowed_hosts(),healthcheck_only=True)
         response=provider.healthcheck()
         raw=response['model_info']
         info={k:raw.get(k) for k in ('model_name','model_version','checkpoint_digest','git_commit','runtime_version','cuda_version','gpu_name','gpu_memory_total','usage_policy','synthetic')}
@@ -186,8 +194,4 @@ def test_endpoint(endpoint_id:UUID,current:CurrentUser):
     finally:
         if provider:
             provider.close()
-    now=datetime.now(timezone.utc)
-    saved=repo.execute("UPDATE geoai_internal.model_endpoints SET health_status=%s,health_code=%s,model_info=%s,last_checked_at=%s,last_healthy_at=CASE WHEN %s='healthy' THEN %s ELSE last_healthy_at END WHERE id=%s AND config_revision=%s RETURNING id",(status,code,Jsonb(info),now,status,now,endpoint_id,endpoint['config_revision']))
-    if not saved:
-        raise HTTPException(409,'Configuration changed during test; test the current configuration again')
-    return {'status':status,'code':code,'model_info':info,'checked_at':now}
+    return status,code,info

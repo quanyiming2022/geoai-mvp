@@ -46,6 +46,14 @@ class AoiInput(BaseModel):
     description: str = Field(default="", max_length=2000)
 
 
+class ResourceRevision(BaseModel):
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class AoiEditInput(AoiInput, ResourceRevision):
+    pass
+
+
 class RenameInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=120)
@@ -95,12 +103,12 @@ class UserSQLRepository:
             raise HTTPException(403, "Editor access required")
         if data.description is None:
             rows = self.execute(
-                f"UPDATE public.{table} SET name=%s WHERE id=%s AND project_id=%s AND name=%s RETURNING id,name,description",
+                f"UPDATE public.{table} SET name=%s WHERE id=%s AND project_id=%s AND deleted_at IS NULL AND name=%s RETURNING id,name,description",
                 (data.name, resource_id, project_id, data.expected_name),
             )
         else:
             rows = self.execute(
-                f"UPDATE public.{table} SET name=%s,description=%s WHERE id=%s AND project_id=%s AND name=%s AND description=%s RETURNING id,name,description",
+                f"UPDATE public.{table} SET name=%s,description=%s WHERE id=%s AND project_id=%s AND deleted_at IS NULL AND name=%s AND description=%s RETURNING id,name,description",
                 (data.name, data.description, resource_id, project_id, data.expected_name, data.expected_description),
             )
         if rows:
@@ -115,16 +123,16 @@ class UserSQLRepository:
 
 
 class PostgisAoiRepository(UserSQLRepository):
-    columns = "id,project_id,name,description,created_by,created_at,extensions.ST_AsGeoJSON(geometry)::json AS geometry,extensions.ST_Area(geometry::extensions.geography) AS area_m2"
+    columns = "revision,updated_at,updated_by,id,project_id,name,description,created_by,created_at,extensions.ST_AsGeoJSON(geometry,17)::json AS geometry,extensions.ST_Area(geometry::extensions.geography) AS area_m2"
 
     def list_for_project(self, project_id, user_id):
         return self.execute(
-            f"SELECT {self.columns} FROM public.aois WHERE project_id=%s ORDER BY created_at DESC",
+            f"SELECT {self.columns} FROM public.aois WHERE project_id=%s AND deleted_at IS NULL ORDER BY created_at DESC",
             (project_id,),
         )
 
     def get(self, resource_id, user_id):
-        rows = self.execute(f"SELECT {self.columns} FROM public.aois WHERE id=%s", (resource_id,))
+        rows = self.execute(f"SELECT {self.columns} FROM public.aois WHERE id=%s AND deleted_at IS NULL", (resource_id,))
         return rows[0] if rows else None
 
     def create(self, project_id, data):
@@ -153,3 +161,33 @@ def create_aoi(project_id: UUID, data: AoiInput, current: CurrentUser):
 def rename_aoi(project_id: UUID, resource_id: UUID, data: RenameInput, current: CurrentUser):
     accessible(project_id, current)
     return UserSQLRepository(current.user["id"]).rename("aoi", project_id, resource_id, data)
+
+
+def require_resource_editor(repo, project_id):
+    rows=repo.execute('SELECT geoai_internal.project_role(%s) AS role',(project_id,))
+    if not rows or rows[0]['role'] not in ('owner','editor'):
+        raise HTTPException(403,'Editor access required')
+
+
+def delete_resource(repo,kind,project_id,resource_id,revision):
+    table={'aois':'aois','prompts':'visual_prompts'}[kind]
+    require_resource_editor(repo,project_id)
+    rows=repo.execute(f"UPDATE public.{table} SET deleted_at=now() WHERE id=%s AND project_id=%s AND revision=%s AND deleted_at IS NULL RETURNING id",(resource_id,project_id,revision))
+    if not rows:raise HTTPException(409,'Resource changed or deleted; refresh before retrying')
+    return {'deleted':str(rows[0]['id'])}
+
+
+@router.put('/projects/{project_id}/aois/{resource_id}')
+def edit_aoi(project_id:UUID,resource_id:UUID,data:AoiEditInput,current:CurrentUser):
+    accessible(project_id,current)
+    repo=PostgisAoiRepository(current.user['id'])
+    require_resource_editor(repo,project_id)
+    rows=repo.execute(f"UPDATE public.aois SET name=%s,description=%s,geometry=extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326) WHERE id=%s AND project_id=%s AND revision=%s AND deleted_at IS NULL RETURNING {repo.columns}",(data.name,data.description,data.geometry.model_dump_json(),resource_id,project_id,data.expected_revision))
+    if not rows:raise HTTPException(409,'AOI changed or deleted; refresh before retrying')
+    return rows[0]
+
+
+@router.delete('/projects/{project_id}/aois/{resource_id}')
+def delete_aoi(project_id:UUID,resource_id:UUID,data:ResourceRevision,current:CurrentUser):
+    accessible(project_id,current)
+    return delete_resource(UserSQLRepository(current.user['id']),'aois',project_id,resource_id,data.expected_revision)

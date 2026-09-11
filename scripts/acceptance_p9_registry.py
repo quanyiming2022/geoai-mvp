@@ -60,7 +60,11 @@ def run():
                     conn.execute("SELECT set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':ids[1],'role':'authenticated'}),))
                     assert conn.execute('SELECT id FROM geoai_internal.model_endpoints WHERE id=%s',(endpoint['id'],)).fetchall()==[]
                 client.put('/admin/model-endpoints/'+endpoint['id'],headers=headers[0],json={**payload,'enabled':False}).raise_for_status()
-                assert client.post('/admin/model-endpoints/'+endpoint['id']+'/test',headers=headers[0]).status_code==409
+                disabled_test=client.post('/admin/model-endpoints/'+endpoint['id']+'/test',headers=headers[0]).raise_for_status().json()
+                assert disabled_test['status']=='degraded'  # Mismatched release remains a failed identity check.
+                disabled=client.get('/admin/model-endpoints',headers=headers[0]).raise_for_status().json()
+                assert next(e for e in disabled if e['id']==endpoint['id'])['enabled'] is False
+                assert all(e['id']!=endpoint['id'] for e in client.get('/models/available-endpoints',headers=headers[0]).raise_for_status().json())
                 client.delete('/admin/model-endpoints/'+endpoint['id'],headers=headers[0]).raise_for_status()
                 endpoint=None
                 print('PASS: admin endpoint CRUD, real LAN HTTP health/model-info, disabled state, SSRF rejection, research policy and ordinary-user API/SQL denial')

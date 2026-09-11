@@ -40,13 +40,18 @@ def mock_polygons(query_image,query_mask,support_image,support_mask):
 
 
 def execute_extraction(cfg,row):
-    with database(cfg) as conn:
-        inputs=conn.execute("SELECT r.cog_object_key,r.bucket,p.support_image_object,p.support_mask_object,extensions.ST_AsGeoJSON(a.geometry)::json AS aoi FROM raster_assets r JOIN visual_prompts p ON p.raster_asset_id=r.id AND p.project_id=r.project_id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND r.status='ready'",(row['raster_asset_id'],row['prompt_id'],row['aoi_id'],row['project_id'])).fetchone()
-    if not inputs:
+    import re
+    frozen=row.get('execution_snapshot')
+    if not frozen or not frozen.get('aoi'):
         raise ValueError('inputs_unavailable')
+    inputs={**frozen['query_raster'],
+            'support_image_object':frozen['prompt']['support_image_object'],
+            'support_mask_object':frozen['prompt']['support_mask_object'],
+            'aoi':frozen['aoi']['geometry']}
     prefix=f"{row['project_id']}/"
-    expected=[prefix+f"rasters/{row['raster_asset_id']}/cog.tif",prefix+f"prompts/{row['prompt_id']}/image.tif",prefix+f"prompts/{row['prompt_id']}/mask.tif"]
-    if inputs['bucket']!=cfg.storage_bucket or [inputs['cog_object_key'],inputs['support_image_object'],inputs['support_mask_object']]!=expected:
+    expected=[prefix+f"rasters/{row['raster_asset_id']}/cog.tif",inputs['support_image_object'],inputs['support_mask_object']]
+    pattern=re.escape(prefix+f"prompts/{row['prompt_id']}/")+r'(versions/[0-9a-f-]{36}/)?'
+    if inputs['bucket']!=cfg.storage_bucket or inputs['cog_object_key']!=expected[0] or not re.fullmatch(pattern+'image.tif',expected[1]) or expected[2]!=expected[1].removesuffix('image.tif')+'mask.tif':
         raise ValueError('invalid_input_storage_reference')
     storage=provider(cfg,internal=True)
     try:
@@ -60,7 +65,7 @@ def execute_extraction(cfg,row):
         polygons=mock_polygons(image,mask,support_image,support_mask)
     finally:
         storage.close()
-    metadata={'mock':True,'model_release':'mock-v1','source_raster':str(row['raster_asset_id']),'job_id':str(row['id']),'prompt_id':str(row['prompt_id']),'aoi_id':str(row['aoi_id']),'source_crs':crs,'output_crs':'EPSG:4326','generation_time':datetime.now(timezone.utc).isoformat()}
+    metadata={'prompt_snapshot':frozen['prompt'],'aoi_snapshot':frozen['aoi'],'input_capture_basis':frozen['capture_basis'],'mock':True,'model_release':'mock-v1','source_raster':str(row['raster_asset_id']),'job_id':str(row['id']),'prompt_id':str(row['prompt_id']),'aoi_id':str(row['aoi_id']),'source_crs':crs,'output_crs':'EPSG:4326','generation_time':datetime.now(timezone.utc).isoformat()}
     persist_results(cfg,row,polygons,metadata)
 
 

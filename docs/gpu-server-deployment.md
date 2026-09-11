@@ -1,3 +1,5 @@
+> Latest 2026-09-11 update: GPU load and four real HTTP inferences completed; semantic acceptance FAILED (weak building transfer and unrelated farmland false positives). Earlier pending-runtime notes below are historical. See [first-run evidence](p9b-building-first-run.md).
+
 # GPU 服务器环境安装归档
 
 本页归档 P9B 部署期间已经执行的主机安装与离线传输步骤。GeoAI 主平台仍在 Mac 本地运行；Linux 只承载研究模型 Worker。服务器地址、账号、凭据、权重和镜像归档不提交 Git。以下命令中的 `GPU_HOST` 由部署者在本地填写。
@@ -133,3 +135,20 @@ ssh "$GPU_HOST" 'mkdir "$HOME/geoai-worker/bridge" && tar -xzf "$HOME/geoai-work
 本次归档检查脚本 Bash 语法、安装原件摘要、bridge 打包白名单和 Git diff。未重复执行 apt 安装、Docker 重启或模型推理；不将历史验证冒充本次完整 P8/P9 regression。
 
 参考：[Docker Ubuntu 安装](https://docs.docker.com/engine/install/ubuntu/)、[NVIDIA Container Toolkit 安装](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)。
+
+## 后续现场核验：复用已有 CUDA/PyTorch
+
+权重上传后，已完成文件摘要与 CPU 受限读取检查：7,239,375,292 bytes，SHA256 `32a08982baea125f60feb95fe0a04dfe450ec9c12ee846384cbadd8ff6c5661c`，1,570 个 tensor，1,809,578,719 个参数。这不是 GPU 推理通过的证据。
+
+用户确认服务器已有 CUDA/PyTorch 后，停止 Docker 镜像传输方案，转为检查已有环境：
+
+- `crossmae`：Python 3.10.11，实际 import Torch `2.1.1+cu121`，CUDA 可用。包元数据报告 `2.1.2+cu121`，与实际 import 不一致，必须以运行结果和后续兼容验证为准。
+- `csmae`：实际 import Torch `2.4.0+cu121`，CUDA 可用。
+- 系统 nvcc：12.0。没有重装驱动、CUDA 或原环境中的 PyTorch。
+- Conda 入口脚本指向迁移前的 home 路径，直接执行现有 base Python 的 `-m conda` 可运行；没有改写原入口。
+
+专用 `geoai-worker/venv` 通过 `--system-site-packages` 复用 crossmae，新增模型/HTTP 依赖只写入该 venv。GDAL 3.8.5 放在独立 `geoai-worker/gdal-runtime`。Worker 需要专用 NumPy 1.26.4 和仅限进程的 C++ 库配置；不写入用户全局 shell 配置。
+
+MMCV 1.7.1 普通包无原生算子；正在构建 mmcv-full 1.7.1，构建源码中的 C++14 设置改为 C++17 以满足现有 PyTorch。补丁仅属于 MMCV 构建副本，SkySense++ 固定源码不变。**当前此兼容环境仍待完整构建、导入与模型加载验证。**
+
+[probe-model.py](../scripts/gpu/probe-model.py) 是服务器侧加载诊断脚本，使用 Worker README 中的环境变量。它显式检查 checkpoint 的 missing/unexpected/shape mismatch，避免官方宽松加载器跳过参数后仍被误判为成功。不要在生产 API 中返回完整诊断堆栈。

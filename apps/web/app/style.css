@@ -63,3 +63,5 @@ body:has(.gis-workbench) .topbar{display:none}.gis-workbench{height:100dvh}.work
 .object-rename-dialog::backdrop {background:#12251b40}
 .object-rename-dialog h3 {margin:0 0 16px;font-size:15px}
 .object-dialog-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+.geometry-vertex{width:22px;height:22px;padding:0;border:1px solid #fff;background:#c87908;color:white;border-radius:50%;font-size:10px;cursor:move;}

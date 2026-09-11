@@ -51,8 +51,19 @@ class JobRepository(UserSQLRepository):
         return rows[0]
 
     def create(self,project_id,data):
+        # A retry with the same key returns the original frozen submission even
+        # if its current resources were later edited/deleted.
+        fields=('raster_asset_id','prompt_id','aoi_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
+        prior=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))
+        if prior:
+            if prior[0]['kind']!=data.kind or any(str(prior[0][f])!=str(getattr(data,f)) for f in fields):
+                if data.kind=='geoextract' and not self.execute("SELECT r.id FROM raster_assets r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND p.deleted_at IS NULL AND a.deleted_at IS NULL AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id)):
+                    raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
+                raise HTTPException(409,'Idempotency key conflicts with another request')
+            return prior[0]
+
         if data.kind=='geoextract':
-            rows=self.execute("SELECT r.id FROM raster_assets r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id))
+            rows=self.execute("SELECT r.id FROM raster_assets r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND p.deleted_at IS NULL AND a.deleted_at IS NULL AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id))
             if not rows:
                 raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
         if data.kind=='geoextract_tile':
@@ -62,8 +73,12 @@ class JobRepository(UserSQLRepository):
                 if existing[0]['kind']!=data.kind or any(str(existing[0][f])!=str(getattr(data,f)) for f in fields):
                     raise HTTPException(409,'Idempotency key conflicts with another request')
                 return existing[0]
-            if not self.execute("SELECT p.id FROM visual_prompts p JOIN raster_assets s ON s.id=p.raster_asset_id WHERE p.id=%s AND p.project_id=%s AND s.status='ready' AND s.width>=512 AND s.height>=512 AND s.bands>=3",(data.prompt_id,project_id)):
+            if not self.execute("SELECT p.id FROM visual_prompts p JOIN raster_assets s ON s.id=p.raster_asset_id WHERE p.id=%s AND p.project_id=%s AND p.deleted_at IS NULL AND s.status='ready' AND s.width>=512 AND s.height>=512 AND s.bands>=3",(data.prompt_id,project_id)):
                 raise HTTPException(422,'Select a reusable prompt with a ready RGB source at least 512 pixels wide and high')
+            from .endpoint_monitor import require_live_endpoint
+            if self.execute('SELECT geoai_internal.project_role(%s) AS role',(project_id,))[0]['role'] not in ('owner','editor'):
+                raise HTTPException(403,'Editor access required')
+            require_live_endpoint(data.model_endpoint_id,data.endpoint_revision)
             fields=('raster_asset_id','prompt_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
             rows=self.execute(f"INSERT INTO jobs(project_id,created_by,idempotency_key,kind,{','.join(fields)}) VALUES ({','.join(['%s']*(4+len(fields)))}) ON CONFLICT DO NOTHING RETURNING {self.columns}",(project_id,self.user_id,data.idempotency_key,data.kind,*(getattr(data,f) for f in fields)))
             if rows:

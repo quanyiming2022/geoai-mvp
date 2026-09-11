@@ -1,3 +1,5 @@
+> Latest 2026-09-11 update: GPU load and four real HTTP inferences completed; semantic acceptance FAILED (weak building transfer and unrelated farmland false positives). Earlier pending-runtime notes below are historical. See [first-run evidence](../../docs/p9b-building-first-run.md).
+
 # Remote research Worker — GPU validation pending
 
 This is an opt-in, research-only adapter bridge, not a verified GPU image or a commercial model. Mac GeoAI continues to run without this service. No weights or upstream source are redistributed.

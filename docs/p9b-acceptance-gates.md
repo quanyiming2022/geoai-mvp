@@ -1,3 +1,5 @@
+> Latest 2026-09-11 update: GPU load and four real HTTP inferences completed; semantic acceptance FAILED (weak building transfer and unrelated farmland false positives). Earlier pending-runtime notes below are historical. See [first-run evidence](p9b-building-first-run.md).
+
 # P9B 实际模型验收与后续顺序
 
 用户于 2026-09-11 调整优先级；此顺序覆盖此前先做辅助样例的安排。
@@ -12,7 +14,7 @@
 
 ## 当前阻塞
 
-用户确认 GPU 服务器与权重仍未就绪。没有真实模型结果、VRAM 或性能数据可报告；不使用 synthetic / Mock 替代，不标记 P9B 完成。已有本地 Qwen → 确认 → Mock 端到端验收仅作为回归基础，不满足第 5 项。
+GPU 服务器已可访问，上传权重已通过 SHA256 与 CPU 受限读取检查；正在复用现有 CUDA/PyTorch 补齐 Worker 依赖。真实模型 GPU 加载、HTTP 推理与四组语义验收尚未通过。没有真实模型结果、VRAM 或性能数据可报告；不使用 synthetic / Mock 替代，不标记 P9B 完成。已有本地 Qwen → 确认 → Mock 端到端验收仅作为回归基础，不满足第 5 项。
 
 ## 四组 fixture
 

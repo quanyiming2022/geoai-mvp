@@ -1,10 +1,11 @@
+import RasterPoll from '../../../components/raster-poll';
 import Link from 'next/link';
 import {requireUser,api} from '../../../lib/session';
 import {GET} from '../../api/health/route';
 import PendingSubmit from '../../../components/pending-submit';
 import ServiceMatrix,{type ServiceRow} from '../../../components/system-service-matrix';
 import {recheckSystem} from '../../system/status/actions';
-export default async function SystemPage(){await requireUser();const access=await api<{is_admin:boolean}>('/admin/access');if(!access.is_admin)return <section><h1>系统状态</h1><p>基础设施状态仅向平台管理员开放。</p></section>;
+export default async function SystemPage(){await requireUser();const access=await api<{is_admin:boolean}>('/admin/access');if(!access.is_admin)return <section><RasterPoll pending={false} monitorEndpoints/><h1>系统状态</h1><p>基础设施状态仅向平台管理员开放。</p></section>;
 const checked=new Date().toISOString();const health=await(await GET()).json() as {checks?:Record<string,string>};const checks=health.checks??{};let nodes:Array<{enabled:boolean;health_status:string;last_checked_at?:string}>=[];let available=true;try{nodes=await api('/admin/model-endpoints');}catch{available=false;}const enabled=nodes.filter(n=>n.enabled);const compute=!available?'性能下降':!nodes.length?'未配置':!enabled.length?'已停用':enabled.every(n=>n.health_status==='healthy')?'正常':enabled.some(n=>n.health_status==='healthy'||n.health_status==='degraded')?'性能下降':'离线';
 const defs=[['postgresql_postgis','数据库','数据与认证'],['auth','用户认证','数据与认证'],['postgrest','API 服务','数据与认证'],['storage','文件存储','存储与实时'],['realtime','实时服务','存储与实时'],['raster_worker','影像处理','影像与任务'],['redis','任务队列','影像与任务']];const failures=defs.filter(([id])=>checks[id]!=='ok').length;
 const services:ServiceRow[]=defs.map(([id,name,group])=>({id,name,group,status:checks[id]==='ok'?'正常':checks[id]?'离线':'性能下降',raw:JSON.stringify({service:id,response:checks[id]??'unavailable'},null,2),checked}));for(const [id,name] of [['compute','AI 计算'],['model','模型服务']])services.push({id,name,group:'AI 计算',status:compute,raw:JSON.stringify({registered_nodes:nodes.length,enabled_nodes:enabled.length},null,2),checked:nodes.map(n=>n.last_checked_at).filter((s):s is string=>!!s).sort().at(-1)??null});

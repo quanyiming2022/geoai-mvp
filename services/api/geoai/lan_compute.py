@@ -33,8 +33,9 @@ def validate_origin(value,allowed_hosts=()):
 
 
 class LanHttpComputeProvider:
-    def __init__(self,endpoint,transport=None,allowed_hosts=()):
-        if not endpoint['enabled']:
+    def __init__(self,endpoint,transport=None,allowed_hosts=(),healthcheck_only=False):
+        self.healthcheck_only=healthcheck_only
+        if not endpoint['enabled'] and not healthcheck_only:
             raise ModelWorkerError('endpoint_unreachable')
         for field in ('health_path','model_info_path','inference_path'):
             if not re.fullmatch(r'/[A-Za-z0-9_-][A-Za-z0-9/_-]*',endpoint.get(field,'/health')):
@@ -53,6 +54,8 @@ class LanHttpComputeProvider:
         pass  # Each call owns and closes its async client.
 
     def call(self,method,path,body=None,timeout=None):
+        if self.healthcheck_only and (method!='GET' or path not in (self.endpoint['health_path'],self.endpoint['model_info_path'])):
+            raise ModelWorkerError('endpoint_unreachable')
         return asyncio.run(self._call(method,path,body,timeout or self.endpoint['timeout_seconds']))
 
     async def _call(self,method,path,body,timeout):
@@ -104,6 +107,8 @@ class LanHttpComputeProvider:
         return {'health':health,'model_info':info}
 
     def execute(self,request):
+        if self.healthcheck_only or not self.endpoint['enabled']:
+            raise ModelWorkerError('endpoint_unreachable')
         deadline=time.monotonic()+self.endpoint['timeout_seconds']
         for attempt in range(2):
             remaining=deadline-time.monotonic()

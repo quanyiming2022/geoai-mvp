@@ -51,3 +51,23 @@ def test_failed_health_http_status_is_not_inference_failure():
     with pytest.raises(ModelWorkerError) as error:
         provider.healthcheck()
     assert error.value.code=='healthcheck_failed'
+
+
+def test_disabled_endpoint_allows_diagnostics_but_never_inference():
+    calls=[]
+    endpoint={'enabled':False,'base_url':'http://10.20.30.40:8001','timeout_seconds':1,'health_path':'/health','model_info_path':'/model-info','usage_policy':'research_only'}
+    def respond(request):
+        calls.append((request.method,request.url.path))
+        data={'status':'ok','cuda':True,'model_loaded':True} if request.url.path=='/health' else {'model_name':'SkySense++','model_version':'research-v1','checkpoint_digest':'a'*64,'usage_policy':'research_only'}
+        return httpx.Response(200,json=data)
+    with pytest.raises(ModelWorkerError):
+        LanHttpComputeProvider(endpoint)
+    provider=LanHttpComputeProvider(endpoint,transport=httpx.MockTransport(respond),healthcheck_only=True)
+    assert provider.healthcheck()['model_info']['model_name']=='SkySense++'
+    for method,path in [('POST','/v1/inference/oneshot-segmentation'),('DELETE','/v1/jobs/a/attempts/b'),('GET','/not-a-health-route')]:
+        with pytest.raises(ModelWorkerError):
+            provider.call(method,path)
+    with pytest.raises(ModelWorkerError):
+        provider.execute(None)
+    assert endpoint['enabled'] is False
+    assert calls==[('GET','/health'),('GET','/model-info')]

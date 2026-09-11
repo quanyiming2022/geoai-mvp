@@ -1,6 +1,7 @@
 """Remote-only SkySense++ bridge. Research-only; CUDA/checkpoint validation pending."""
 import base64
 import hashlib
+from functools import partial
 import os
 from pathlib import Path
 import random
@@ -12,6 +13,27 @@ import numpy as np
 from geoai.worker_contract import ModelWorkerResponse,ModelWorkerError,probability_metrics
 
 UPSTREAM_COMMIT='cb0c6b774471ad3314354041c8fa6aae7d49a9bb'
+
+
+def enable_memory_efficient_attention(model):
+    """Skip unused attention weights only inside the audited MMCV wrapper.
+
+    MMCV 1.7.1 MultiheadAttention consumes tuple element zero only. Asking
+    PyTorch for weights materializes a 128 GiB matrix for the native tile.
+    need_weights=False selects SDPA without changing parameters/state keys.
+    Ordinary attention modules retain their original return contract.
+    """
+    import torch
+    from mmcv.cnn.bricks.transformer import MultiheadAttention
+    changed=0
+    for wrapper in model.modules():
+        if type(wrapper) is MultiheadAttention and type(wrapper.attn) is torch.nn.MultiheadAttention:
+            attention=wrapper.attn
+            if not getattr(attention,'_geoai_no_weights',False):
+                attention.forward=partial(attention.forward,need_weights=False)
+                attention._geoai_no_weights=True
+                changed+=1
+    return changed
 
 
 def composite_inputs(support,mask,query):
@@ -69,6 +91,7 @@ class ResearchSkySensePPAdapter:
         predictor=build_online_predictor(str(checkpoint),str(source/'configs/eval_skysense_pp_flood3i.yml'))
         predictor.load(with_ckpt=True)
         predictor.model.eval()
+        self.efficient_attention_modules=enable_memory_efficient_attention(predictor.model)
         self.predictor=predictor
         self.checkpoint_digest=digest
 
@@ -118,7 +141,7 @@ class ResearchSkySensePPAdapter:
                 probability=logits.softmax(dim=1)[0,slot,512:,:].cpu().numpy().astype('<f4')
                 torch.cuda.synchronize()
                 runtime_ms=(time.perf_counter()-started)*1000
-                return ModelWorkerResponse(job_id=request.job_id,attempt_id=request.attempt_id,model_release_id=request.model_release_id,probability_mask=base64.b64encode(probability.tobytes()).decode(),width=512,height=512,model_name='SkySense++',model_version=self.version,checkpoint_digest=self.checkpoint_digest,runtime_ms=runtime_ms,metadata={**probability_metrics(probability),'seed':request.seed,'slot_id':slot,'gpu_memory_peak':torch.cuda.max_memory_allocated(),'usage_policy':'research_only','git_commit':UPSTREAM_COMMIT})
+                return ModelWorkerResponse(job_id=request.job_id,attempt_id=request.attempt_id,model_release_id=request.model_release_id,probability_mask=base64.b64encode(probability.tobytes()).decode(),width=512,height=512,model_name='SkySense++',model_version=self.version,checkpoint_digest=self.checkpoint_digest,runtime_ms=runtime_ms,metadata={**probability_metrics(probability),'seed':request.seed,'slot_id':slot,'gpu_memory_peak':torch.cuda.max_memory_allocated(),'usage_policy':'research_only','git_commit':UPSTREAM_COMMIT,'attention_backend':'pytorch_sdpa','efficient_attention_modules':self.efficient_attention_modules})
             except torch.cuda.OutOfMemoryError:
                 torch.cuda.empty_cache()
                 raise ModelWorkerError('cuda_oom') from None

@@ -64,10 +64,15 @@ def execute_tile(cfg,row):
         health=compute.healthcheck()['model_info']
         if any(health.get(k)!=endpoint[k] for k in ('model_name','model_version','checkpoint_digest')):
             raise ModelWorkerError('invalid_response')
-        with database(cfg) as conn:
-            inputs=conn.execute("SELECT p.raster_asset_id AS support_raster,extensions.ST_AsGeoJSON(p.geometry)::json AS geometry,s.cog_object_key AS support_key,s.display_ranges AS support_ranges,q.cog_object_key AS query_key,q.display_ranges AS query_ranges FROM visual_prompts p JOIN raster_assets s ON s.id=p.raster_asset_id AND s.project_id=p.project_id JOIN raster_assets q ON q.project_id=p.project_id WHERE p.id=%s AND q.id=%s AND p.project_id=%s AND s.status='ready' AND q.status='ready'",(row['prompt_id'],row['raster_asset_id'],row['project_id'])).fetchone()
-        if not inputs:
+        frozen=row.get('execution_snapshot')
+        if not frozen:
             raise ModelWorkerError('inference_failed')
+        inputs={'support_raster':frozen['prompt']['raster_asset_id'],
+                'geometry':frozen['prompt']['geometry'],
+                'support_key':frozen['support_raster']['cog_object_key'],
+                'support_ranges':frozen['support_raster']['display_ranges'],
+                'query_key':frozen['query_raster']['cog_object_key'],
+                'query_ranges':frozen['query_raster']['display_ranges']}
         for role,raster in [('support',inputs['support_raster']),('query',row['raster_asset_id'])]:
             if inputs[role+'_key']!=f"{row['project_id']}/rasters/{raster}/cog.tif":
                 raise ModelWorkerError('inference_failed')
@@ -86,7 +91,7 @@ def execute_tile(cfg,row):
             return
         binary,polygons=tile_polygons(probability,valid,transform,crs)
         prefix=f"{row['project_id']}/jobs/{row['id']}/{row['claim_token']}"
-        metadata={**stats,'model':response.model_name,'model_version':response.model_version,'model_release_id':str(row['model_release_id']),'endpoint_id':str(row['model_endpoint_id']),'checkpoint_digest':response.checkpoint_digest,'usage_policy':endpoint['usage_policy'],'synthetic':health.get('synthetic',False),'runtime_ms':response.runtime_ms,'gpu_memory_peak':response.metadata.get('gpu_memory_peak'),'seed':row['seed'],'slot_id':response.metadata.get('slot_id'),'prompt_id':str(row['prompt_id']),'prompt_version':'1','support_raster':str(inputs['support_raster']),'source_raster':str(row['raster_asset_id']),'support_window':support_window,'query_window':{'col_off':row['query_col'],'row_off':row['query_row'],'width':512,'height':512},'source_crs':crs,'affine':list(transform)[:6],'threshold':.5,'output_crs':'EPSG:4326','generation_time':datetime.now(timezone.utc).isoformat(),'probability_object':prefix+'/probability.tif','mask_object':prefix+'/mask.tif','valid_mask_object':prefix+'/valid.tif','input_digests':{k:hashlib.sha256(getattr(request,k).data.encode()).hexdigest() for k in ('support_image','support_mask','query_image')}}
+        metadata={**stats,'model':response.model_name,'model_version':response.model_version,'model_release_id':str(row['model_release_id']),'endpoint_id':str(row['model_endpoint_id']),'checkpoint_digest':response.checkpoint_digest,'usage_policy':endpoint['usage_policy'],'synthetic':health.get('synthetic',False),'runtime_ms':response.runtime_ms,'gpu_memory_peak':response.metadata.get('gpu_memory_peak'),'seed':row['seed'],'slot_id':response.metadata.get('slot_id'),'prompt_id':str(row['prompt_id']),'prompt_version':str(frozen['prompt']['revision']),'prompt_name':frozen['prompt']['name'],'prompt_class':frozen['prompt']['class_label'],'input_capture_basis':frozen['capture_basis'],'support_raster':str(inputs['support_raster']),'source_raster':str(row['raster_asset_id']),'support_window':support_window,'query_window':{'col_off':row['query_col'],'row_off':row['query_row'],'width':512,'height':512},'source_crs':crs,'affine':list(transform)[:6],'threshold':.5,'output_crs':'EPSG:4326','generation_time':datetime.now(timezone.utc).isoformat(),'probability_object':prefix+'/probability.tif','mask_object':prefix+'/mask.tif','valid_mask_object':prefix+'/valid.tif','input_digests':{k:hashlib.sha256(getattr(request,k).data.encode()).hexdigest() for k in ('support_image','support_mask','query_image')}}
         for key,values in [('probability_object',probability),('mask_object',binary),('valid_mask_object',valid.astype('uint8'))]:
             storage.put_object(cfg.storage_bucket,metadata[key],geotiff(values,transform,crs),'image/tiff')
         # On uncertain DB outcome retain immutable objects; they cannot appear without a fenced row.

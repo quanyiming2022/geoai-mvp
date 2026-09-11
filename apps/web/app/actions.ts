@@ -136,3 +136,16 @@ export async function renameSpatialObject(projectId:string, kind:'aois'|'prompts
     return {error:error instanceof ApiError && error.status===409?'信息已被修改，请刷新后重试。':errorMessage(error)};
   }
 }
+
+
+export async function deleteSpatialObject(projectId:string,kind:'aois'|'prompts',id:string,revision:number) {
+ if(!['aois','prompts'].includes(kind)||![projectId,id].every(v=>/^[0-9a-f-]{36}$/i.test(v)))return {error:'对象无效。'};
+ try {await api(`/projects/${projectId}/${kind}/${id}`,{method:'DELETE',body:JSON.stringify({expected_revision:revision})});revalidatePath(`/projects/${projectId}/workspace`);return {deleted:true};}
+ catch(error){return {error:errorMessage(error)};}
+}
+
+export async function editSpatialObject(projectId:string,kind:'aois'|'prompts',id:string,data:FormData) {
+ if(!['aois','prompts'].includes(kind)||![projectId,id].every(v=>/^[0-9a-f-]{36}$/i.test(v)))return {error:'对象无效。'};
+ try {const body={name:value(data,'name'),description:value(data,'description'),geometry:JSON.parse(value(data,'geometry')),expected_revision:Number(value(data,'expected_revision')),...(kind==='prompts'?{class_label:value(data,'class_label'),raster_asset_id:value(data,'raster_asset_id')}:{})};await api(`/projects/${projectId}/${kind}/${id}`,{method:'PUT',body:JSON.stringify(body)});revalidatePath(`/projects/${projectId}/workspace`);return {saved:true};}
+ catch(error){return {error:errorMessage(error)};}
+}

@@ -6,7 +6,7 @@ from pydantic import Field
 import httpx
 import rasterio
 from .auth import CurrentUser
-from .spatial import AoiInput, RenameInput, UserSQLRepository
+from .spatial import AoiInput, RenameInput, UserSQLRepository, ResourceRevision, require_resource_editor, delete_resource
 from .projects import accessible
 from .rasters import asset_for_user, provider
 from .config import Settings
@@ -19,14 +19,18 @@ class PromptInput(AoiInput):
     description: str = Field(default='', max_length=2000)
 
 
+class PromptEditInput(PromptInput, ResourceRevision):
+    pass
+
+
 class PromptRepository(UserSQLRepository):
-    columns = "id,project_id,raster_asset_id,name,class_label,description,extensions.ST_AsGeoJSON(geometry)::json AS geometry,bbox,source_crs,support_image_object,support_mask_object,created_by,created_at"
+    columns = "revision,artifact_version,updated_at,updated_by,id,project_id,raster_asset_id,name,class_label,description,extensions.ST_AsGeoJSON(geometry,17)::json AS geometry,bbox,source_crs,support_image_object,support_mask_object,created_by,created_at"
 
     def list(self, project_id):
-        return self.execute(f"SELECT {self.columns} FROM public.visual_prompts WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
+        return self.execute(f"SELECT {self.columns} FROM public.visual_prompts WHERE project_id=%s AND deleted_at IS NULL ORDER BY created_at DESC", (project_id,))
 
     def get(self, resource_id):
-        rows = self.execute(f"SELECT {self.columns} FROM public.visual_prompts WHERE id=%s", (resource_id,))
+        rows = self.execute(f"SELECT {self.columns} FROM public.visual_prompts WHERE id=%s AND deleted_at IS NULL", (resource_id,))
         return rows[0] if rows else None
 
     def validate(self, raster_id, geometry):
@@ -109,7 +113,7 @@ def download_prompt(prompt_id: UUID, kind: str, current: CurrentUser):
     cfg = Settings()
     storage = provider(cfg)
     try:
-        key = f"{row['project_id']}/prompts/{prompt_id}/{kind}.tif"
+        key = row["support_image_object" if kind=="image" else "support_mask_object"]
         return {'url': storage.create_signed_url(cfg.storage_bucket,key,60)}
     finally:
         storage.close()
@@ -162,3 +166,63 @@ def preview_prompt(project_id:UUID,data:PromptInput,current:CurrentUser):
 def rename_prompt(project_id: UUID, resource_id: UUID, data: RenameInput, current: CurrentUser):
     accessible(project_id, current)
     return UserSQLRepository(current.user['id']).rename('prompt', project_id, resource_id, data)
+
+
+def publish_prompt_revision(storage,bucket,prefix,image,mask,commit):
+    attempted=[]
+    preserve=False
+    try:
+        for kind,blob in (('image',image),('mask',mask)):
+            key=prefix+'/'+kind+'.tif'
+            attempted.append(key)
+            storage.put_object(bucket,key,blob,'image/tiff')
+        preserve=True
+        try:
+            return commit()
+        except HTTPException as error:
+            if error.status_code<500:preserve=False
+            raise
+    finally:
+        if not preserve:
+            for key in attempted:
+                try:storage.delete_object(bucket,key)
+                except Exception:pass
+
+
+@router.put('/projects/{project_id}/prompts/{resource_id}')
+def edit_prompt(project_id:UUID,resource_id:UUID,data:PromptEditInput,current:CurrentUser):
+    accessible(project_id,current)
+    repo=PromptRepository(current.user['id'])
+    require_resource_editor(repo,project_id)
+    old=repo.get(resource_id)
+    if not old or str(old['project_id'])!=str(project_id):raise HTTPException(404,'Prompt not found')
+    if old['revision']!=data.expected_revision:raise HTTPException(409,'Prompt changed; refresh before retrying')
+    if str(old['raster_asset_id'])!=str(data.raster_asset_id):raise HTTPException(422,'Prompt source cannot change')
+    repo.validate(data.raster_asset_id,data.geometry.model_dump_json())
+    asset,cfg=asset_for_user(data.raster_asset_id,current)
+    expected=f"{project_id}/rasters/{asset['id']}/cog.tif"
+    if asset.get('cog_object_key')!=expected:raise HTTPException(409,'Invalid COG reference')
+    if not crop_slots.acquire(blocking=False):raise HTTPException(429,'Support crop busy')
+    storage=provider(cfg,internal=True)
+    version=uuid4()
+    prefix=f'{project_id}/prompts/{resource_id}/versions/{version}'
+    try:
+        image,mask,crs=support_crop(storage.create_signed_url(cfg.storage_bucket,expected,60),data.geometry.model_dump())
+        points=[p for ring in data.geometry.coordinates for p in ring]
+        bbox=[min(p[0] for p in points),min(p[1] for p in points),max(p[0] for p in points),max(p[1] for p in points)]
+        def commit():
+            rows=repo.execute(f"UPDATE public.visual_prompts SET name=%s,description=%s,class_label=%s,geometry=extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326),bbox=%s::jsonb,source_crs=%s,support_image_object=%s,support_mask_object=%s,artifact_version=%s WHERE id=%s AND project_id=%s AND revision=%s AND deleted_at IS NULL RETURNING {repo.columns}",(data.name,data.description,data.class_label,data.geometry.model_dump_json(),json.dumps(bbox),crs,prefix+'/image.tif',prefix+'/mask.tif',version,resource_id,project_id,data.expected_revision))
+            if not rows:raise HTTPException(409,'Prompt changed or deleted; refresh before retrying')
+            return rows[0]
+        return publish_prompt_revision(storage,cfg.storage_bucket,prefix,image,mask,commit)
+    except ValueError as error:raise HTTPException(422,str(error)) from None
+    except (httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'Support regeneration unavailable; original version retained') from None
+    finally:
+        storage.close()
+        crop_slots.release()
+
+
+@router.delete('/projects/{project_id}/prompts/{resource_id}')
+def delete_prompt(project_id:UUID,resource_id:UUID,data:ResourceRevision,current:CurrentUser):
+    accessible(project_id,current)
+    return delete_resource(UserSQLRepository(current.user['id']),'prompts',project_id,resource_id,data.expected_revision)

@@ -14,7 +14,23 @@ from .projects import router as projects_router
 from .rasters import router as rasters_router
 from .spatial import router as spatial_router
 
-app = FastAPI(title="GeoAI Platform", version="0.1.0")
+from contextlib import asynccontextmanager
+from threading import Event, Thread
+
+
+@asynccontextmanager
+async def lifespan(app):
+    from .endpoint_monitor import monitor
+    stop = Event()
+    thread = Thread(target=monitor, args=(stop,), daemon=True, name='endpoint-health')
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+
+
+app = FastAPI(title="GeoAI Platform", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(rasters_router)
