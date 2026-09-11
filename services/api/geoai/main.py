@@ -118,3 +118,6 @@ app.include_router(results_router)
 
 from .endpoints import router as endpoints_router  # noqa: E402
 app.include_router(endpoints_router)
+
+from .llm import router as llm_router
+app.include_router(llm_router)
