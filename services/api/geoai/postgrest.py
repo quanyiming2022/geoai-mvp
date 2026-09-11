@@ -5,7 +5,7 @@ import httpx
 from .config import Settings
 
 
-class PostgrestProjectRepository:
+class PostgrestRepository:
     def __init__(self, token: str):
         self.cfg = Settings()
         self.token = token
@@ -37,6 +37,8 @@ class PostgrestProjectRepository:
             raise HTTPException(503, "Data service unavailable")
         return response.json() if response.content else []
 
+
+class PostgrestProjectRepository(PostgrestRepository):
     def list_for_user(self, user_id):
         # user_id is verified at the service boundary; JWT + RLS scope the query.
         return self.request("GET", "projects", params={"order": "created_at.desc"})
@@ -85,3 +87,19 @@ class PostgrestProjectRepository:
         )
         if not rows:
             raise HTTPException(403, "Permission denied")
+
+
+class PostgrestRasterRepository(PostgrestRepository):
+    def list_for_project(self, project_id, user_id):
+        return self.request(
+            "GET",
+            "raster_assets",
+            params={"project_id": "eq." + str(project_id), "order": "created_at.desc"},
+        )
+
+    def get(self, resource_id, user_id):
+        rows = self.request("GET", "raster_assets", params={"id": "eq." + str(resource_id)})
+        return rows[0] if rows else None
+
+    def create(self, data):
+        return self.request("POST", "raster_assets", body=data)[0]

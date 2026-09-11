@@ -26,3 +26,5 @@ export async function requireUser() {
   try { return await api<{ id: string; email: string }>('/auth/me'); }
   catch (error) { if (error instanceof ApiError && error.status === 401) redirect('/login'); throw error; }
 }
+
+export type RasterAsset = { id: string; project_id: string; filename: string; size: number; checksum: string; status: string; created_at: string };

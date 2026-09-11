@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,3 +11,4 @@ class Settings(BaseSettings):
     service_role_key: SecretStr
     anon_key: SecretStr
     storage_bucket: str = "geoai"
+    max_upload_bytes: int = Field(default=536870912, ge=1024, le=10737418240)

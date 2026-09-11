@@ -72,3 +72,12 @@ HTTPS 私有化部署设置 `GEOAI_COOKIE_SECURE=true`；本机 HTTP 默认 fals
 默认地图是离线 WGS84 经纬参考网，不请求外部地图服务；支持拖动、缩放、坐标显示和重置。
 MapLibre GL 6.9.0 的 worker 与共享模块由构建脚本从锁定依赖复制到 public/maplibre，Docker 同步携带这些文件；生成文件不提交 Git。
 MapLibre 的 BSD 3-Clause 许可证保留在 docs/licenses/maplibre-gl-6.9.0.txt。工作空间权限回归：`.venv/bin/python scripts/acceptance_p2.py`。
+
+## 影像上传
+工作空间支持 owner/editor 上传带 CRS 的 GeoTIFF；viewer 可查看和下载。
+浏览器将文件流式发送至同源接口，FastAPI 在磁盘暂存、校验 TIFF/CRS 和 SHA256，再通过 ObjectStorageProvider 写入私有 bucket。
+默认上传上限 512 MiB（MAX_UPLOAD_BYTES），同时最多处理两个上传；Storage 上限由 STORAGE_FILE_SIZE_LIMIT 配置。
+上传接口绕过 Next proxy 的请求体复制，续期在 route handler 内进行，真实 12 MiB 文件已验证。
+原始文件保持不变，COG 转换在 P4 完成。测试文件由 `.venv/bin/python scripts/make_fixture.py` 本地生成，不提交数据。
+验收：`.venv/bin/python scripts/acceptance_p3.py`。下载链接按成员权限签发，60 秒有效。
+若元数据写入响应中断，API 先按生成的 asset_id 核对；确认成功返回记录，无法确认则返回 registration_uncertain 并保留对象，避免误删已提交文件。此时先刷新影像列表，保留的未登记对象可在恢复后按返回 asset_id 排查，不自动删除不确定数据。

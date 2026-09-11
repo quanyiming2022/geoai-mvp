@@ -39,6 +39,7 @@ services:
       SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       ANON_KEY: ${ANON_KEY}
       STORAGE_BUCKET: ${STORAGE_BUCKET}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-536870912}
     ports:
       - "127.0.0.1:${GEOAI_API_PORT}:8080"
     depends_on:

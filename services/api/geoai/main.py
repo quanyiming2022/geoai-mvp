@@ -11,10 +11,12 @@ from .compute import MockComputeProvider
 
 from .auth import router as auth_router
 from .projects import router as projects_router
+from .rasters import router as rasters_router
 
 app = FastAPI(title="GeoAI Platform", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(projects_router)
+app.include_router(rasters_router)
 
 
 @app.middleware("http")
