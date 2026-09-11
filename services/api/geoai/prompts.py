@@ -113,3 +113,46 @@ def download_prompt(prompt_id: UUID, kind: str, current: CurrentUser):
         return {'url': storage.create_signed_url(cfg.storage_bucket,key,60)}
     finally:
         storage.close()
+
+
+@router.post('/projects/{project_id}/prompts/preview')
+def preview_prompt(project_id:UUID,data:PromptInput,current:CurrentUser):
+    import base64
+    import numpy as np
+    from rasterio.io import MemoryFile
+    accessible(project_id,current)
+    asset,cfg=asset_for_user(data.raster_asset_id,current)
+    if asset['project_id']!=str(project_id):
+        raise HTTPException(422,'Raster belongs to another project')
+    PromptRepository(current.user['id']).validate(data.raster_asset_id,data.geometry.model_dump_json())
+    expected=f"{project_id}/rasters/{asset['id']}/cog.tif"
+    if asset.get('cog_object_key')!=expected:
+        raise HTTPException(409,'Invalid COG reference')
+    if not crop_slots.acquire(blocking=False):
+        raise HTTPException(429,'Support crop busy')
+    storage=provider(cfg,internal=True)
+    try:
+        image,mask,_=support_crop(storage.create_signed_url(cfg.storage_bucket,expected,60),data.geometry.model_dump())
+        previews={}
+        for name,blob in [('image',image),('mask',mask)]:
+            with MemoryFile(blob) as memory,memory.open() as ds:
+                pixels=ds.read()
+                if name=='mask':
+                    pixels=(pixels*255).astype('uint8')
+                elif pixels.dtype!=np.uint8:
+                    ranges=asset.get('display_ranges')
+                    if not ranges:
+                        raise ValueError('Preview requires display ranges')
+                    pixels=np.stack([np.clip((band-low)/max(high-low,1e-6)*255,0,255).astype('uint8') for band,(low,high) in zip(pixels[:3],ranges[:3])])
+                with MemoryFile() as out:
+                    with out.open(driver='PNG',width=ds.width,height=ds.height,count=min(3,len(pixels)),dtype='uint8') as png:
+                        png.write(pixels[:3])
+                    previews[name]='data:image/png;base64,'+base64.b64encode(out.read()).decode()
+        return previews
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from None
+    except (httpx.HTTPError,rasterio.errors.RasterioError):
+        raise HTTPException(503,'Preview unavailable') from None
+    finally:
+        storage.close()
+        crop_slots.release()

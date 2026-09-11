@@ -1,0 +1,831 @@
+追加要求：GeoAI Professional UX / Interaction Design
+
+当前已有交互虽然功能可用，但整体仍偏开发者 Demo / CRUD 后台，不符合专业 GIS、遥感解译和生产工作台的使用习惯。
+
+从 P9 开始，同时对现有 P1–P8 UI 做渐进式专业化改造。不要推翻已通过的业务逻辑、API、数据库和测试，只调整信息架构、视觉层级、交互流程和组件组织。
+
+一、产品交互定位
+
+GeoAI 不应表现为：
+
+普通 SaaS Dashboard
++
+一堆表单
++
+一个地图组件
+
+而应定位为：
+
+Professional Geospatial AI Workbench
+
+参考专业软件的工作方式：
+
+ArcGIS Pro
+QGIS
+ENVI
+Google Earth Engine
+modern AI annotation tools
+
+但不要照抄其老式 UI。
+
+目标是：
+
+地图是主工作区
+数据、Prompt、任务和结果围绕地图组织
+用户不应频繁跳页面
+尽量在一个 Workspace 内完成完整工作流
+二、核心页面采用 Map-Centric Workspace
+
+项目进入后不要再做：
+
+Dashboard
+→ Data page
+→ Prompt page
+→ Jobs page
+→ Result page
+
+用户应进入一个统一：
+
+Project Workspace
+
+推荐布局：
+
+┌──────────────────────────────────────────────────────────────┐
+│ Top Bar                                                     │
+│ Project / Search / Status / User                            │
+├──────────┬─────────────────────────────────┬─────────────────┤
+│          │                                 │                 │
+│ Left     │                                 │ Right Inspector │
+│ Panel    │            MAP                  │                 │
+│          │                                 │                 │
+│ Layers   │                                 │ Object / Job    │
+│ Data     │                                 │ Properties      │
+│ Prompts  │                                 │                 │
+│ Results  │                                 │                 │
+│          │                                 │                 │
+├──────────┴─────────────────────────────────┴─────────────────┤
+│ Bottom Status / Task Bar                                    │
+└──────────────────────────────────────────────────────────────┘
+
+地图始终是中心。
+
+左侧：
+
+Data
+Layers
+AOI
+Visual Prompts
+Results
+
+右侧 Inspector：
+
+当前选中对象的详细属性与操作
+
+底部：
+
+Job / Progress / Logs / Coordinates / Scale
+三、避免“满屏卡片”
+
+不要把所有信息都设计成：
+
+rounded card
+shadow
+big icon
+big title
+
+GeoAI 是生产工具，不是营销首页。
+
+工作区内部应更多使用：
+
+dense list
+compact table
+tree
+tabs
+inspector
+toolbar
+status chip
+context menu
+
+Dashboard 可以有 Card。
+
+但 Project Workspace 必须强调：
+
+信息密度
+扫描效率
+操作速度
+四、建立明确的视觉层级
+
+页面只允许一个主要 CTA。
+
+例如创建 GeoExtract：
+
+Run Extraction
+
+是 Primary Action。
+
+其他：
+
+Save
+Cancel
+Delete
+Test Connection
+Export
+
+使用 Secondary / Ghost / Danger。
+
+避免：
+
+每个按钮都是蓝色大按钮
+五、GeoExtract 改成 Step Workflow
+
+不要让用户一次面对十几个表单字段。
+
+GeoExtract 应明确分成：
+
+1 Select Raster
+      ↓
+2 Define Visual Prompt
+      ↓
+3 Define Search Area
+      ↓
+4 Select Model
+      ↓
+5 Review Parameters
+      ↓
+6 Run
+
+其中已经满足的步骤自动显示：
+
+✓
+
+不需要用户重复填写。
+
+例如：
+
+Visual Prompt
+✓ Building Sample 01
+
+Search Area
+✓ AOI-03
+
+Model
+✓ SkySense++ Research
+
+[Run Extraction]
+六、Visual Prompt 交互必须专业
+
+当前 Draw Polygon 只是技术实现，不应直接暴露为主要产品概念。
+
+UI 应表达：
+
+Create Visual Prompt
+
+用户操作：
+
+① 点击 Create Visual Prompt
+② 地图进入绘制模式
+③ 鼠标绘制目标
+④ 自动生成 support preview
+⑤ 用户确认
+
+右侧实时显示：
+
+Prompt Preview
+
+[support image]
+[support mask]
+
+Name
+Label
+Source Raster
+Area
+
+[Save Prompt]
+
+绘制时提供：
+
+Esc = Cancel
+Enter / Double-click = Finish
+Backspace = Remove Last Vertex
+
+不要要求用户先填表单再回地图绘制。
+
+七、地图工具栏专业化
+
+地图工具不要散布成普通按钮。
+
+使用紧凑 Toolbar，例如：
+
+[Pointer]
+[Pan]
+[AOI]
+[Prompt]
+[Measure]
+[Fit]
+
+工具必须有：
+
+tooltip
+active state
+keyboard shortcut
+disabled state
+
+当前正在使用的工具必须视觉明确。
+
+八、图层管理应采用 GIS 习惯
+
+Layer Panel 应类似：
+
+☑ GF2_20260901
+   opacity ─────●──
+
+☑ GeoExtract Result
+   ● accepted
+   ● pending
+   ● rejected
+
+☐ AOI-02
+
+支持：
+
+show/hide
+opacity
+reorder
+zoom to layer
+remove from map
+properties
+
+右键 Context Menu：
+
+Zoom To
+Rename
+Properties
+Export
+Remove
+
+数据删除和“从地图移除”必须区别。
+
+九、任务不要做成独立“后台表格”
+
+用户创建 GeoExtract 后：
+
+地图不应跳走。
+
+底部出现：
+
+GeoExtract #184
+
+Running
+███████████░░░ 68%
+
+Processing tile...
+
+[Cancel]
+
+完成以后：
+
+✓ Completed · 32 candidates · 18.4 s
+[View Results]
+
+点击后结果直接出现在当前地图。
+
+Job Center 可以存在，但主要用于：
+
+history
+debugging
+audit
+
+而不是主工作流。
+
+十、模型服务器配置界面重新设计
+
+不要把 Model Endpoint 做成一个原始数据库 CRUD 页面。
+
+应设计：
+
+Settings
+→ Models & Compute
+
+页面分两层：
+
+Models
+Compute Endpoints
+
+模型卡片可以显示：
+
+SkySense++
+Research only
+
+One-shot segmentation
+Visual Prompt
+
+Endpoint:
+Lab GPU
+
+Status:
+● Healthy
+
+Endpoint 页面：
+
+Lab GPU
+LAN HTTP
+
+192.168.1.50:8001
+
+● Healthy
+NVIDIA RTX xxxx
+CUDA xx.x
+VRAM xx GB
+Model loaded
+
+[Test Connection]
+[Edit]
+
+状态颜色必须语义明确：
+
+Green  Healthy
+Amber  Degraded
+Red    Offline
+Gray   Disabled
+
+不要让用户阅读 JSON 判断服务器是否正常。
+
+十一、研究模型必须明确标记
+
+SkySense++ UI 上明显显示：
+
+RESEARCH
+
+或：
+
+Research Only
+
+不要只藏在 metadata 里。
+
+Tooltip：
+
+This model is registered for research and internal evaluation.
+
+Production model 则显示：
+
+Production
+十二、结果审核必须围绕地图
+
+选中一个 AI polygon：
+
+地图高亮。
+
+右侧 Inspector：
+
+Candidate #032
+
+Confidence   0.87
+Area         326.4 m²
+Model        SkySense++
+Prompt       Building-01
+
+Review
+
+[Accept]
+[Reject]
+[Edit Geometry]
+
+支持快捷键：
+
+A = Accept
+R = Reject
+E = Edit
+N = Next
+P = Previous
+
+审核后自动跳到下一候选目标。
+
+这是专业生产效率的关键。
+
+十三、结果状态要有视觉编码
+
+地图默认区分：
+
+Pending
+Accepted
+Rejected
+
+但不要过度使用高饱和颜色。
+
+应兼顾：
+
+深色地图
+浅色影像
+高分影像
+航片
+
+同时不能只依靠颜色表达状态，应结合：
+
+fill
+stroke
+opacity
+icon / legend
+十四、专业 GIS 状态栏
+
+地图底部应有紧凑状态栏：
+
+EPSG:3857
+104.07231, 30.66152
+Zoom 14.3
+Scale 1:12,400
+Raster: GF2_20260901
+
+鼠标移动时实时显示坐标。
+
+后续支持：
+
+coordinate format toggle
+十五、错误设计必须用户可理解
+
+禁止只显示：
+
+Error 500
+
+示例：
+
+SkySense++ server is unavailable
+
+Lab GPU · 192.168.1.50
+Last successful check: 2 min ago
+
+Your project and data are safe.
+
+[Retry]
+[Choose Another Endpoint]
+
+技术详情放：
+
+Show Details
+
+而不是直接把 Python traceback 给普通用户。
+
+十六、Loading 和异步反馈
+
+所有超过约 300ms 的操作都必须有视觉反馈。
+
+例如：
+
+Uploading
+Processing Raster
+Building COG
+Preparing Prompt
+Queued
+Running Inference
+Polygonizing
+Exporting
+
+不允许点击按钮后界面静止几秒。
+
+十七、表单专业化
+
+表单字段要分：
+
+Essential
+Advanced
+
+GeoExtract 普通用户默认只看到：
+
+Prompt
+AOI
+Model
+Run
+
+高级参数：
+
+threshold
+tile size
+overlap
+seed
+endpoint
+
+放入：
+
+Advanced Settings
+
+不要让一般用户一开始面对算法参数。
+
+十八、不要暴露内部工程术语
+
+普通用户 UI 避免直接显示：
+
+model_release_id
+object_key
+provider_type
+request_schema_version
+PostGIS
+ComputeProvider
+Adapter
+
+UI 应转换为：
+
+Model
+Storage
+Compute Server
+Version
+Status
+
+内部 ID 可以在 Developer Details 中查看。
+
+十九、统一设计语言
+
+建立 Design Tokens：
+
+spacing
+typography
+border radius
+panel sizes
+icon sizes
+z-index
+status states
+
+避免每个页面自己定义尺寸。
+
+推荐整体风格：
+
+restrained
+technical
+dense
+precise
+map-first
+
+不做：
+
+大量渐变
+玻璃拟态
+发光
+大面积圆角卡片
+营销型 hero
+二十、桌面优先
+
+GeoAI 是专业生产工具。
+
+优先优化：
+
+1440×900
+1920×1080
+2560×1440
+
+小屏可以响应式降级，但不要求手机完成完整遥感生产流程。
+
+移动端主要支持：
+
+查看项目
+查看任务
+查看结果
+
+不要求完成复杂 AOI/Prompt 绘制。
+
+二十一、面板必须可调整
+
+Left Panel 和 Inspector：
+
+collapse
+resize
+
+用户应能最大化地图。
+
+支持：
+
+Tab
+
+或按钮快速隐藏 UI 进入：
+
+Map Focus Mode
+二十二、键盘效率
+
+专业桌面工作流至少支持：
+
+V  Pointer
+H  Pan
+P  Prompt
+G  AOI
+Esc Cancel
+A Accept
+R Reject
+E Edit
+
+快捷键必须出现在 tooltip 中。
+
+输入框获得焦点时不得错误触发地图快捷键。
+
+二十三、Undo / destructive actions
+
+删除：
+
+Raster
+Prompt
+AOI
+Result
+
+必须区分：
+
+Remove from map
+Delete permanently
+
+永久删除必须确认。
+
+绘制和编辑 geometry 应支持：
+
+Undo
+
+至少当前编辑 session 支持。
+
+二十四、Empty State
+
+不要显示空白表格。
+
+例如没有 Raster：
+
+No raster data yet
+
+Upload a GeoTIFF to start working with this project.
+
+[Upload Raster]
+
+没有 Prompt：
+
+No visual prompts
+
+Draw an example target on the map.
+
+[Create Visual Prompt]
+二十五、专业数据表格
+
+Dataset / Job / Result history 应支持：
+
+sort
+filter
+pagination
+search
+column visibility
+
+不需要每一张表都做全套，但核心生产表必须具备基础过滤。
+
+二十六、UI 性能
+
+不允许：
+
+每次拖地图都全页面 rerender
+数千 polygon 直接 React DOM 渲染
+
+地理数据应尽量走：
+
+MapLibre source/layer
+
+大结果集使用：
+
+viewport loading
+clustering
+vector tile
+
+P9 可以先保持当前小数据实现，但架构不要堵死未来升级路径。
+
+二十七、地图与属性选择保持同步
+
+必须实现：
+
+点击地图对象
+→ Inspector 选中
+
+点击列表对象
+→ Map highlight + fly/fit
+
+不允许地图和列表是两个互不关联的界面。
+
+二十八、可访问性
+
+所有图标按钮：
+
+aria-label
+tooltip
+focus state
+
+不只依赖颜色传达状态。
+
+Keyboard navigation 不能破坏基础功能。
+
+二十九、P9 UI 改造范围
+
+当前不要全面重写 P1–P8。
+
+P9 只优先改造影响当前真实模型工作流的部分：
+
+Project Workspace shell
+Layer Panel
+Visual Prompt interaction
+GeoExtract workflow
+Job progress
+Result inspector
+Model & Compute settings
+Model Endpoint health
+
+其他 Dashboard 等页面可后续逐步统一。
+
+三十、P9 UX 验收场景
+
+浏览器真实完成：
+
+Open Project
+↓
+Raster visible
+↓
+Create Visual Prompt directly on map
+↓
+Create / select AOI
+↓
+Open GeoExtract
+↓
+Select SkySense++ Research
+↓
+Endpoint shows Healthy
+↓
+Run
+↓
+Bottom progress appears without leaving map
+↓
+Result automatically overlays
+↓
+Click candidate
+↓
+Inspector shows confidence/area/model
+↓
+Accept
+↓
+Next candidate
+↓
+Export
+
+整个过程中不应该要求用户不断跳转不同 CRUD 页面。
+
+三十一、UI 改造不得破坏 P8
+
+所有已有：
+
+API
+RLS
+job state
+audit
+export
+prompt generation
+raster pipeline
+
+都应保持。
+
+UI 重构后：
+
+P8 regression = PASS
+
+才能接受。
+
+三十二、设计验收方式
+
+每次主要 UI 修改后，必须真正用浏览器检查：
+
+visual hierarchy
+overflow
+panel resize
+loading
+disabled states
+error states
+keyboard interaction
+map interaction
+1440×900
+1920×1080
+
+不允许只靠：
+
+npm build
+
+宣称 UI 完成。
+
+每个主要工作区保留截图作为验证记录。
+
+三十三、原则
+
+每次设计决定优先问：
+
+一个遥感/GIS专业人员是否可以更快完成任务？
+
+而不是：
+
+页面是不是有更多卡片和按钮？
+
+产品应呈现：
+
+专业
+克制
+高信息密度
+快速
+GIS-native
+AI-assisted
+
+而不是：
+
+generic admin dashboard
+
+从 P9 开始遵循此 UX 基准，并对影响当前主链路的 P1–P8 UI 做增量改进，禁止为了视觉重构破坏已经通过的 P8 功能和数据模型。

@@ -113,3 +113,7 @@ P7 用 Mock 诊断验证 ComputeProvider。项目页面自动轮询状态，所�
 地图与任务列表自动更新。点击候选可跳转审核，或在下方接受/排除；原始预测几何不可修改，审核历史由数据库触发器记录。GeoJSON 导出只包含已接受结果，携带源影像、任务、模型版本和生成时间。历史任务可分页浏览，按任务完整查看候选。
 当前为 **mock-v1 测试结果**，不代表真实遥感识别。P8 不启用 SkySense++、GPU 或任何付费服务。AOI 仍采用有界窗口（最多 400 万源像素、最长边 512 输出像素），大范围分块推理属于后续阶段。
 完整验收：`.venv/bin/python scripts/acceptance_p8.py`；包括新账号、项目、上传、COG、样例、AOI、任务、模型、polygon、审核、Next GeoJSON 下载以及直接 SQL/RLS/审计检查。
+
+## P9 模型服务器配置（进行中）
+
+管理员可在 `/settings/models` 配置模型版本与 LAN HTTP 端点。GPU / 权重未就绪时保持端点禁用，不影响 P8。配置步骤见 [手动配置说明](docs/p9-model-endpoint-setup.md)，长期产品约束见 [GeoExtract 产品方向](docs/geoextract-product-direction.md)。当前 fake-real Worker 只验证真实 HTTP 通道，不代表 SkySense++ 推理接入完成。

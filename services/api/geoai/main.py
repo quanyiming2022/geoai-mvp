@@ -115,3 +115,6 @@ app.include_router(jobs_router)
 
 from .results import router as results_router  # noqa: E402
 app.include_router(results_router)
+
+from .endpoints import router as endpoints_router  # noqa: E402
+app.include_router(endpoints_router)

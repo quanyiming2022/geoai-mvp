@@ -1,0 +1,28 @@
+"use client";
+import { useState } from 'react';
+import { createTileJob } from '../app/actions';
+import PendingSubmit from './pending-submit';
+import type { VisualPrompt } from './project-map';
+import type { RasterAsset } from '../lib/session';
+export type AvailableEndpoint={id:string;name:string;model_release_id:string;model_name:string;model_version:string;usage_policy:string;config_revision:number;health_status:string};
+export default function TileExtractionForm({projectId,prompts,rasters,endpoints,idempotencyKey}:{projectId:string;prompts:VisualPrompt[];rasters:RasterAsset[];endpoints:AvailableEndpoint[];idempotencyKey:string}) {
+ const usable=rasters.filter(r=>r.status==='ready'&&(r.width??0)>=512&&(r.height??0)>=512&&(r.bands??0)>=3);
+ const supports=prompts.filter(p=>usable.some(r=>r.id===p.raster_asset_id));
+ const [step,setStep]=useState(0);
+ const [endpointId,setEndpointId]=useState(endpoints[0]?.id??'');
+ const [rasterId,setRasterId]=useState(usable[0]?.id??'');
+ const [promptId,setPromptId]=useState(supports[0]?.id??'');
+ const [col,setCol]=useState('0');const [row,setRow]=useState('0');const [seed,setSeed]=useState('57');
+ const endpoint=endpoints.find(e=>e.id===endpointId);const raster=usable.find(r=>r.id===rasterId);const prompt=supports.find(p=>p.id===promptId);
+ const windowValid=!!raster&&col!==''&&row!==''&&[Number(col),Number(row)].every(n=>Number.isInteger(n)&&n>=0)&&Number(col)+512<=raster.width!&&Number(row)+512<=raster.height!;
+ const seedValid=seed!==''&&Number.isInteger(Number(seed))&&Number(seed)>=0&&Number(seed)<=4294967295;
+ const ready=[!!raster,!!prompt,windowValid,!!endpoint,!!raster&&!!prompt&&windowValid&&!!endpoint&&seedValid];
+ return <form action={createTileJob}><h3>样例引导提取</h3><p>一个视觉样例，定义提取目标。当前执行单个原始分辨率 Tile。</p><ol className="extraction-steps">{['目标影像','Visual Prompt','目标窗口','计算模型','确认与运行'].map((label,i)=><li key={label} aria-current={step===i?'step':undefined}><button type="button" className="secondary compact" disabled={i>step+1||i>0&&!ready.slice(0,i).every(Boolean)} onClick={()=>setStep(i)}>{ready[i]&&i<step?'✓ ':''}{i+1}. {label}</button></li>)}</ol>
+ <input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="idempotency_key" value={idempotencyKey}/><input type="hidden" name="model_release_id" value={endpoint?.model_release_id??''}/><input type="hidden" name="endpoint_revision" value={endpoint?.config_revision??''}/><input type="hidden" name="raster_asset_id" value={rasterId}/><input type="hidden" name="prompt_id" value={promptId}/><input type="hidden" name="model_endpoint_id" value={endpointId}/><input type="hidden" name="query_col" value={col}/><input type="hidden" name="query_row" value={row}/><input type="hidden" name="seed" value={seed}/>
+ {step===0&&<><label>目标影像<select value={rasterId} onChange={e=>setRasterId(e.target.value)}>{usable.map(r=><option key={r.id} value={r.id}>{r.filename} · {r.width} × {r.height}</option>)}</select></label>{!usable.length&&<p role="status">请先上传至少 512 × 512 的 RGB 影像，等待处理完成。</p>}</>}
+ {step===1&&<><label>已保存样例<select value={promptId} onChange={e=>setPromptId(e.target.value)}>{supports.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><p>样例可来自项目中的另一景影像。</p>{!supports.length&&<p role="status">请在地图创建 Visual Prompt。样例源影像也需至少 512 × 512。</p>}</>}
+ {step===2&&<><label>起始列（源像素，从 0 开始）<input type="number" min={0} step={1} value={col} onChange={e=>setCol(e.target.value)}/></label><label>起始行（源像素，从 0 开始）<input type="number" min={0} step={1} value={row} onChange={e=>setRow(e.target.value)}/></label><p>固定读取 512 × 512 源像素，不缩小大 AOI，不执行大图切片。</p>{!windowValid&&<p role="alert">窗口需完整位于所选影像内。</p>}</>}
+ {step===3&&<><label>模型与计算服务器<select value={endpointId} onChange={e=>setEndpointId(e.target.value)}>{endpoints.map(e=><option key={e.id} value={e.id}>{e.model_name} · {e.name}</option>)}</select></label>{endpoint&&<p><span className="badge">{endpoint.usage_policy==='research_only'?'RESEARCH ONLY':endpoint.usage_policy==='internal_only'?'SYNTHETIC TEST':'PRODUCTION'}</span> · {endpoint.health_status}</p>}{!endpoints.length&&<p role="status">暂无可用端点。管理员需配置权重身份并启用服务器；GPU 未就绪时可继续使用 Mock 工作流。</p>}</>}
+ {step===4&&<><dl><dt>目标影像</dt><dd>{raster?.filename}</dd><dt>Visual Prompt</dt><dd>{prompt?.name}</dd><dt>目标窗口</dt><dd>{col}, {row} · 512 × 512</dd><dt>模型</dt><dd>{endpoint?.model_name} · {endpoint?.model_version}</dd><dt>计算服务器</dt><dd>{endpoint?.name} · {endpoint?.health_status}</dd></dl>{endpoint?.usage_policy!=='commercial'&&<p className="notice">{endpoint?.usage_policy==='research_only'?'仅研究用途。':'合成测试，不代表真实模型识别。'}</p>}<details><summary>Advanced Settings</summary><label>Seed<input type="number" min={0} max={4294967295} value={seed} onChange={e=>setSeed(e.target.value)}/></label><small>样例 polygon 必须完整落在一个源分辨率 512 × 512 窗口内。</small></details><PendingSubmit disabled={!ready[4]} pendingLabel="正在创建任务…">运行单 Tile 提取</PendingSubmit></>}
+ <div className="draw-actions">{step>0&&<button type="button" className="secondary compact" onClick={()=>setStep(step-1)}>上一步</button>}{step<4&&<button type="button" className="secondary compact" disabled={!ready[step]} onClick={()=>setStep(step+1)}>下一步</button>}</div></form>;
+}

@@ -39,6 +39,7 @@ services:
       SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       ANON_KEY: ${ANON_KEY}
       STORAGE_BUCKET: ${STORAGE_BUCKET}
+      MODEL_ENDPOINT_ALLOWED_HOSTS: ${MODEL_ENDPOINT_ALLOWED_HOSTS:-fake-real-worker}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-536870912}
       MAX_RASTER_PIXELS: ${MAX_RASTER_PIXELS:-1000000000}
       RASTER_TIMEOUT_SECONDS: ${RASTER_TIMEOUT_SECONDS:-300}
@@ -63,6 +64,17 @@ services:
       test: [CMD, python, -c, "from redis import Redis; import os; assert Redis.from_url(os.environ['REDIS_URL']).exists('geoai:raster:heartbeat')"]
       interval: 10s
       timeout: 5s
+      retries: 5
+  fake-real-worker:
+    profiles: [model-test]
+    build: ../../../services/api
+    command: [uvicorn, geoai.model_worker:app, --host, 0.0.0.0, --port, "8001"]
+    ports:
+      - "127.0.0.1:8001:8001"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)"]
+      interval: 5s
+      timeout: 3s
       retries: 5
   web:
     build:

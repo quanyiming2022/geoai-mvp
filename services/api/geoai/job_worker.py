@@ -5,6 +5,7 @@ from .raster_worker import database
 from .config import Settings
 from .compute import MockComputeProvider
 from .models import MockAdapter
+from .worker_contract import ModelWorkerError
 
 
 def claim_job(cfg):
@@ -35,6 +36,10 @@ def job_active(cfg,row):
 def execute_job(row,workspace=None):
     cfg=Settings()
     try:
+        if row['kind']=='geoextract_tile':
+            from .tile_extraction import execute_tile
+            execute_tile(cfg,row)
+            return
         if row['kind']=='geoextract':
             from .extraction import execute_extraction
             execute_extraction(cfg,row)
@@ -44,5 +49,7 @@ def execute_job(row,workspace=None):
         provider=MockComputeProvider(MockAdapter())
         output=provider.execute({'width':2,'height':2},{'support_mask':[1,0,0,1]})
         finish_job(cfg,row,{'mock':True,'model':'mock-v1','sample_count':len(output['probabilities'])})
+    except ModelWorkerError as error:
+        fail_job(cfg,row,error.code)
     except Exception:
         fail_job(cfg,row,'job_execution_failed')

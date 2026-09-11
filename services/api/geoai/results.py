@@ -14,10 +14,10 @@ class ReviewInput(BaseModel):
 
 
 class ResultRepository(UserSQLRepository):
-    columns='id,project_id,job_id,prompt_id,extensions.ST_AsGeoJSON(geometry)::json AS geometry,area_m2,mean_confidence,max_confidence,review_status,source_metadata,created_at'
+    columns='id,project_id,job_id,prompt_id,extensions.ST_AsGeoJSON(geometry)::json AS geometry,area_m2,extensions.ST_Perimeter(geometry::extensions.geography) AS perimeter_m,mean_confidence,max_confidence,review_status,source_metadata,created_at'
 
     def list(self,project_id,job_id=None):
-        return self.execute(f"SELECT {self.columns} FROM extraction_results WHERE project_id=%s AND job_id=COALESCE(%s::uuid,(SELECT id FROM jobs WHERE project_id=%s AND kind='geoextract' AND status='succeeded' ORDER BY created_at DESC LIMIT 1)) ORDER BY created_at,id",(project_id,job_id,project_id))
+        return self.execute(f"SELECT {self.columns} FROM extraction_results WHERE project_id=%s AND job_id=COALESCE(%s::uuid,(SELECT id FROM jobs WHERE project_id=%s AND kind IN ('geoextract','geoextract_tile') AND status='succeeded' ORDER BY created_at DESC LIMIT 1)) ORDER BY created_at,id",(project_id,job_id,project_id))
 
     def review(self,result_id,action):
         if not self.execute('SELECT id FROM extraction_results WHERE id=%s',(result_id,)):
@@ -49,8 +49,37 @@ def review_result(result_id: UUID,data: ReviewInput,current: CurrentUser):
 @router.get('/jobs/{job_id}/export')
 def export_result(job_id: UUID,current: CurrentUser):
     job=JobRepository(current.user['id']).get(job_id)
-    if job['kind']!='geoextract' or job['status']!='succeeded':
+    if job['kind'] not in ('geoextract','geoextract_tile') or job['status']!='succeeded':
         raise HTTPException(409,'Only completed GeoExtract jobs can be exported')
     result=ResultRepository(current.user['id']).export(job_id)
     result['metadata']={'job_id':str(job_id),'source_raster':str(job['raster_asset_id']),'model_release':'mock-v1','crs':'EPSG:4326','review_filter':'accepted','generation_time':job['finished_at']}
+    if job['kind']=='geoextract_tile':
+        result['metadata'].update(job['result'] or {})
+        result['metadata']['model_release']=str(job['model_release_id'])
     return result
+
+
+@router.get('/jobs/{job_id}/artifacts/{kind}/download')
+def download_tile_artifact(job_id:UUID,kind:Literal['probability','mask','valid'],current:CurrentUser):
+    from .config import Settings
+    from .rasters import provider
+    job=JobRepository(current.user['id']).get(job_id)
+    if job['kind']!='geoextract_tile' or job['status']!='succeeded':
+        raise HTTPException(409,'Artifact unavailable')
+    key=(job['result'] or {}).get({'probability':'probability_object','mask':'mask_object','valid':'valid_mask_object'}[kind])
+    prefix=f"{job['project_id']}/jobs/{job_id}/"
+    if not isinstance(key,str) or not key.startswith(prefix):
+        raise HTTPException(409,'Artifact identity unavailable')
+    suffix=key[len(prefix):].split('/')
+    try:
+        if len(suffix)!=2 or suffix[1]!=kind+'.tif':
+            raise ValueError()
+        UUID(suffix[0])
+    except ValueError:
+        raise HTTPException(409,'Invalid artifact identity') from None
+    cfg=Settings()
+    storage=provider(cfg)
+    try:
+        return {'url':storage.create_signed_url(cfg.storage_bucket,key,60)}
+    finally:
+        storage.close()

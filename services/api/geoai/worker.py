@@ -109,7 +109,10 @@ def main():
         if job.process:
             try:
                 if not job_active(cfg,job.row):
-                    job.stop()
+                    cancelled=job.stop()
+                    if cancelled['kind']=='geoextract_tile':
+                        from .tile_extraction import cancel_remote
+                        cancel_remote(cfg,cancelled)
             except Exception as error:
                 logging.error('Job cancellation check: %s',type(error).__name__)
         for slot,claimer,reporter in slots:

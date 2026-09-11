@@ -55,7 +55,7 @@ def run():
                 not state["Running"]
                 or state.get("Health", {}).get("Status", "healthy") != "healthy"
             ):
-                raise RuntimeError("Container unhealthy")
+                raise RuntimeError("Container unhealthy: " + cid[:12] + " state=" + str(state.get("Status")) + " health=" + str(state.get("Health", {}).get("Status")))
         if len(ids) < (11 if infra_only else 14):
             raise RuntimeError("Required services missing")
 
@@ -254,7 +254,7 @@ if __name__ == "__main__":
         print(
             "FAIL: "
             + type(exc).__name__
-            + " (inspect local service status; secrets suppressed)",
+            + (": " + str(exc) if isinstance(exc, RuntimeError) else " (inspect local service status; secrets suppressed)"),
             flush=True,
         )
         sys.exit(1)

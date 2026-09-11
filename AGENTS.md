@@ -12,3 +12,5 @@ Keep ObjectStorageProvider, Repository, ComputeProvider, ModelAdapter boundaries
 ResearchSkySensePPAdapter is research_only and unavailable until P9.
 No commit or push until every local P0 acceptance check passes, including restart persistence.
 CI does not replace local Docker, SQL, browser and integration verification.
+P8 is COMPLETE and frozen at v0.1.0-p8. P9 is authorized on feat/p9-real-model-worker through P9A/P9A.5/P9B, including incremental map-first UX. Preserve P8 contracts/behavior and regression coverage. Stop after P9; never claim completion from fake inference when real LAN GPU/checkpoint verification is unavailable.
+GeoExtract product direction: docs/geoextract-product-direction.md. Sample-defined target extraction, not image search or a SkySense++ frontend. P9 remains single visual support + one native-resolution tile. Preserve extensibility for reusable/versioned prompts, support_examples, negative examples, disabled experimental language fields, independent query raster, immutable GIS prediction/review provenance. Do not implement advanced levels early.

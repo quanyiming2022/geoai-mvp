@@ -88,3 +88,41 @@ def remove_member(project_id: UUID, user_id: UUID, current: CurrentUser):
     if row["owner_id"] != current.user["id"]:
         raise HTTPException(403, "Only owners can manage members")
     repo.remove_member(project_id, user_id)
+
+
+class EmailMemberInput(RoleInput):
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def member_identities(ids):
+    # Only invoked after project access has been checked; never a public directory.
+    import psycopg
+    from .config import Settings
+    with psycopg.connect(Settings().database_url.get_secret_value(), connect_timeout=5) as conn:
+        rows = conn.execute("SELECT id, email FROM auth.users WHERE id = ANY(%s::uuid[])", (list(ids),)).fetchall()
+    return {str(uid): email for uid, email in rows}
+
+
+@router.get("/{project_id}/member-identities")
+def project_member_identities(project_id: UUID, current: CurrentUser):
+    repo, row = accessible(project_id, current)
+    members = [{"user_id": row["owner_id"], "role": "owner"}, *repo.members(project_id)]
+    emails = member_identities([m["user_id"] for m in members])
+    return [{"user_id": m["user_id"], "role": m["role"], "email": emails.get(m["user_id"]), "status": "active"} for m in members]
+
+
+@router.post("/{project_id}/members/by-email", status_code=201)
+def add_member_by_email(project_id: UUID, data: EmailMemberInput, current: CurrentUser):
+    repo, row = accessible(project_id, current)
+    if row["owner_id"] != current.user["id"]:
+        raise HTTPException(403, "Only owners can manage members")
+    import psycopg
+    from .config import Settings
+    with psycopg.connect(Settings().database_url.get_secret_value(), connect_timeout=5) as conn:
+        users = conn.execute("SELECT id FROM auth.users WHERE lower(email) = lower(%s) AND deleted_at IS NULL LIMIT 2", (data.email.strip(),)).fetchall()
+    if len(users) != 1:
+        raise HTTPException(404, "Account not found")
+    uid = str(users[0][0])
+    if uid == row["owner_id"]:
+        raise HTTPException(409, "Owner is already a member")
+    return repo.add_member(project_id, {"user_id": uid, "role": data.role})
