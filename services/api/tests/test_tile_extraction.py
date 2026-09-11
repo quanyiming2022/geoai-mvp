@@ -10,7 +10,8 @@ from geoai.tile_extraction import tile_polygons
 def test_tile_job_is_opt_in_and_url_free():
     values=dict(kind='geoextract_tile',idempotency_key=uuid4(),prompt_id=uuid4(),raster_asset_id=uuid4(),model_endpoint_id=uuid4(),model_release_id=uuid4(),endpoint_revision=1,query_col=0,query_row=0,seed=57)
     assert JobInput(**values).query_col==0
-    for override in ({'query_row':True},{'aoi_id':uuid4()},{'model_url':'http://localhost'},{'kind':'geoextract'},{'seed':None}):
+    assert JobInput(**{**values,'aoi_id':uuid4()}).aoi_id is not None
+    for override in ({'query_row':True},{'model_url':'http://localhost'},{'kind':'geoextract'},{'seed':None}):
         with pytest.raises(ValidationError):
             JobInput(**{**values,**override})
 

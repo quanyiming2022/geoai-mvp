@@ -134,7 +134,7 @@ def catalog(project_id,current):
         raise HTTPException(422,'Too many resources for this assistant version; use manual selection')
     return {'rasters':assets,'prompts':prompts,'aois':aois,'endpoints':endpoints}
 
-CAPABILITY_MESSAGE='当前 SkySense++ 真实推理仅支持单个 512×512 原分辨率窗口，尚未支持整个 AOI 自动扫描。'
+CAPABILITY_MESSAGE='目前真实模型只能先分析范围内的一小块区域，还不能自动扫描整个范围。你可以先在地图上选择一个位置进行测试。'
 
 def requested_scope(text):
     if re.search(r'任务.*状态|查看.*任务|job.*status',text,re.I) and not re.search(r'提取|扫描|extract|scan',text,re.I):return None
@@ -182,7 +182,7 @@ def build_job(intent:Intent,resources:dict,draft_id:UUID):
         if intent.query_col is None or intent.query_row is None:raise HTTPException(422,'请在地图上选择单瓦片测试区域。')
         col=intent.query_col;row=intent.query_row
         if (raster.get('bands') or 0)<3 or col+512>(raster.get('width') or 0) or row+512>(raster.get('height') or 0):raise HTTPException(422,'512×512 查询窗口必须完整位于 RGB 原始影像内。')
-        payload.update(kind='geoextract_tile',model_endpoint_id=str(endpoint['id']),model_release_id=str(endpoint['model_release_id']),endpoint_revision=endpoint['config_revision'],query_col=col,query_row=row,seed=57)
+        payload.update(kind='geoextract_tile',aoi_id=intent.aoi_id,model_endpoint_id=str(endpoint['id']),model_release_id=str(endpoint['model_release_id']),endpoint_revision=endpoint['config_revision'],query_col=col,query_row=row,seed=57)
         labels.update(计算通道=endpoint['name'],模型=endpoint['model_name'],使用策略=endpoint['usage_policy'],查询窗口='地图选定区域 · 512×512 原分辨率像素',随机种子='57')
     else:raise HTTPException(422,'请明确选择真实 Worker 或 Mock 通道。')
     return JobInput.model_validate(payload),labels
@@ -312,6 +312,7 @@ def confirm(project_id:UUID,data:ConfirmInput,current:CurrentUser):
 
 
 class MapWindowInput(BaseModel):
+    aoi_id:UUID|None=None
     model_config=ConfigDict(extra='forbid')
     raster_id:UUID
     longitude:float=Field(ge=-180,le=180,allow_inf_nan=False)
@@ -327,11 +328,18 @@ def map_window(project_id:UUID,data:MapWindowInput,current:CurrentUser):
     if str(asset['project_id'])!=str(project_id):raise HTTPException(404,'Raster not found')
     key=f"{project_id}/rasters/{data.raster_id}/cog.tif"
     if asset.get('cog_object_key')!=key:raise HTTPException(409,'Raster unavailable')
+    aoi_geometry=None
+    if data.aoi_id:
+        from .spatial import UserSQLRepository
+        rows=UserSQLRepository(current.user['id']).execute("SELECT extensions.ST_AsGeoJSON(geometry,17)::json AS geometry,extensions.ST_Covers(geometry,extensions.ST_SetSRID(extensions.ST_MakePoint(%s,%s),4326)) AS inside FROM aois WHERE id=%s AND project_id=%s AND deleted_at IS NULL",(data.longitude,data.latitude,data.aoi_id,project_id))
+        if not rows:raise HTTPException(404,'AOI 不存在或不可访问')
+        if not rows[0]['inside']:raise HTTPException(422,'请选择 AOI 内的位置')
+        aoi_geometry=rows[0]['geometry']
     storage=provider(cfg,internal=True)
     try:
         with rasterio.Env(GDAL_HTTP_TIMEOUT='15',GDAL_HTTP_MAX_RETRY='1'):
             with rasterio.open(storage.create_signed_url(cfg.storage_bucket,key,60)) as ds:
-                return {'raster_id':str(data.raster_id),**select_window(ds,data.longitude,data.latitude)}
+                return {'raster_id':str(data.raster_id),'aoi_id':str(data.aoi_id) if data.aoi_id else None,**select_window(ds,data.longitude,data.latitude,aoi_geometry)}
     except ValueError as error:raise HTTPException(422,str(error)) from None
     except (httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'地图选区暂不可用') from None
     finally:storage.close()

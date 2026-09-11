@@ -137,3 +137,6 @@ app.include_router(endpoints_router)
 
 from .llm import router as llm_router
 app.include_router(llm_router)
+
+from .workspace_agent import router as workspace_agent_router
+app.include_router(workspace_agent_router)

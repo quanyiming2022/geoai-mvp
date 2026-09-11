@@ -114,7 +114,7 @@ export async function reviewResult(data: FormData) {
 
 export async function createTileJob(data: FormData) {
  const path=projectPath(data);let message='';
- try {await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:Number(value(data,'query_col')),query_row:Number(value(data,'query_row')),seed:Number(value(data,'seed'))})});}
+ try {await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',aoi_id:value(data,'aoi_id')||undefined,idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:Number(value(data,'query_col')),query_row:Number(value(data,'query_row')),seed:Number(value(data,'seed'))})});}
  catch(error){message=errorMessage(error);}
  revalidatePath(path+'/workspace');redirect(path+'/workspace?message='+encodeURIComponent(message||'单 Tile 提取任务已加入队列。'));
 }

@@ -14,7 +14,7 @@ class ReviewInput(BaseModel):
 
 
 class ResultRepository(UserSQLRepository):
-    columns='id,project_id,job_id,prompt_id,extensions.ST_AsGeoJSON(geometry)::json AS geometry,area_m2,extensions.ST_Perimeter(geometry::extensions.geography) AS perimeter_m,mean_confidence,max_confidence,review_status,source_metadata,created_at'
+    columns='id,project_id,job_id,prompt_id,extensions.ST_AsGeoJSON(geometry,CASE WHEN source_metadata->\'aoi_geometry_snapshot\' <> \'null\'::jsonb THEN 17 ELSE 9 END)::json AS geometry,area_m2,extensions.ST_Perimeter(geometry::extensions.geography) AS perimeter_m,mean_confidence,max_confidence,review_status,source_metadata,created_at'
 
     def list(self,project_id,job_id=None):
         return self.execute(f"SELECT {self.columns} FROM extraction_results WHERE project_id=%s AND job_id=COALESCE(%s::uuid,(SELECT id FROM jobs WHERE project_id=%s AND kind IN ('geoextract','geoextract_tile') AND status='succeeded' ORDER BY created_at DESC LIMIT 1)) ORDER BY created_at,id",(project_id,job_id,project_id))

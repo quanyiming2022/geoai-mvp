@@ -31,7 +31,7 @@ class JobInput(BaseModel):
             raise ValueError('Job inputs do not match kind')
         tile=(self.model_endpoint_id,self.model_release_id,self.endpoint_revision,self.query_col,self.query_row,self.seed)
         if self.kind=='geoextract_tile':
-            if not self.raster_asset_id or not self.prompt_id or self.aoi_id or any(v is None for v in tile):
+            if not self.raster_asset_id or not self.prompt_id or any(v is None for v in tile):
                 raise ValueError('Single tile requires a prompt, query window and registered endpoint')
         elif any(v is not None for v in tile):
             raise ValueError('Tile parameters are only valid for the tile workflow')
@@ -67,7 +67,7 @@ class JobRepository(UserSQLRepository):
             if not rows:
                 raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
         if data.kind=='geoextract_tile':
-            fields=('raster_asset_id','prompt_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
+            fields=('raster_asset_id','prompt_id','aoi_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
             existing=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))
             if existing:
                 if existing[0]['kind']!=data.kind or any(str(existing[0][f])!=str(getattr(data,f)) for f in fields):
@@ -79,8 +79,11 @@ class JobRepository(UserSQLRepository):
             if self.execute('SELECT geoai_internal.project_role(%s) AS role',(project_id,))[0]['role'] not in ('owner','editor'):
                 raise HTTPException(403,'Editor access required')
             require_live_endpoint(data.model_endpoint_id,data.endpoint_revision)
-            fields=('raster_asset_id','prompt_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
-            rows=self.execute(f"INSERT INTO jobs(project_id,created_by,idempotency_key,kind,{','.join(fields)}) VALUES ({','.join(['%s']*(4+len(fields)))}) ON CONFLICT DO NOTHING RETURNING {self.columns}",(project_id,self.user_id,data.idempotency_key,data.kind,*(getattr(data,f) for f in fields)))
+            fields=('raster_asset_id','prompt_id','aoi_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
+            from psycopg.types.json import Jsonb
+            from .map_window import job_window_bounds
+            bounds=job_window_bounds(self,project_id,data)
+            rows=self.execute(f"INSERT INTO jobs(project_id,created_by,idempotency_key,kind,{','.join(fields)},query_window_bounds) VALUES ({','.join(['%s']*(5+len(fields)))}) ON CONFLICT DO NOTHING RETURNING {self.columns}",(project_id,self.user_id,data.idempotency_key,data.kind,*(getattr(data,f) for f in fields),Jsonb(bounds)))
             if rows:
                 return rows[0]
             existing=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))
