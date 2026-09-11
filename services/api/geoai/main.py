@@ -109,3 +109,6 @@ def ready():
 
 from .prompts import router as prompts_router  # noqa: E402
 app.include_router(prompts_router)
+
+from .jobs import router as jobs_router  # noqa: E402
+app.include_router(jobs_router)

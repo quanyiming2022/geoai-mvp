@@ -101,3 +101,9 @@ AOI 存入 PostGIS Polygon，数据库验证闭合、有效性、面积、顶点
 生成的 support image 与二值 support mask 均为 GeoTIFF，保留源 CRS，使用完全一致的尺寸和 transform；掩膜为 0/1，并排除无效像素。最长边 512 像素，采样窗口最多 400 万源像素，最多 16 波段，同时最多两个裁剪请求。旋转影像按实际像素覆盖范围验证，越界或无有效目标像素会拒绝。
 样例产物在私有 Storage 保存，下载按当前项目成员权限签发短效链接。确定失败时清理新对象；数据库结果不确定时保留，避免删除已提交样例。
 验收：`.venv/bin/python scripts/acceptance_p6.py`。实现依据 [Rasterio geometry window/mask](https://rasterio.readthedocs.io/en/stable/api/rasterio.features.html) 与 [resampling](https://rasterio.readthedocs.io/en/stable/topics/resampling.html)。
+
+## 任务系统
+任务记录保存在 PostgreSQL，Redis 仅提供有界通知；通知丢失时 Worker 仍扫描数据库恢复排队任务。创建使用项目与创建者作用域的幂等键。状态为 queued/running/succeeded/failed/cancelled，数据库拒绝绕过 API 的非法状态迁移。
+任务与 Raster 分别在独立进程执行，先检查本地超时，再访问网络；启动失败清理进程句柄与暂存目录。claim token 和状态条件阻止旧尝试覆盖取消或新尝试；Worker 中断后的陈旧任务转为失败，可由编辑者重试。
+P7 用 Mock 诊断验证 ComputeProvider。项目页面自动轮询状态，所有者/编辑者可运行、取消或重试，查看者只读。
+验收：`.venv/bin/python scripts/acceptance_p7.py`，包括并发幂等、SQL/RLS、取消竞争、Redis 重启和 Worker 恢复。

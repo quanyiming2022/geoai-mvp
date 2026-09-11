@@ -15,7 +15,7 @@ from .raster_processing import convert
 
 def database(cfg):
     return psycopg.connect(
-        cfg.database_url.get_secret_value(), connect_timeout=5, row_factory=dict_row
+        cfg.database_url.get_secret_value(), connect_timeout=5, row_factory=dict_row, options="-c statement_timeout=15000 -c lock_timeout=5000"
     )
 
 

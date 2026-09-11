@@ -84,3 +84,16 @@ export async function createPrompt(data: FormData) {
   revalidatePath(path + '/workspace');
   redirect(path + '/workspace?message=' + encodeURIComponent(message || 'Visual Prompt 已保存。'));
 }
+
+export async function createDiagnosticJob(data: FormData) {
+ const path=projectPath(data); let message='';
+ try { await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'diagnostic',idempotency_key:value(data,'idempotency_key')})}); }
+ catch(error) { message=errorMessage(error); }
+ revalidatePath(path+'/workspace'); redirect(path+'/workspace?message='+encodeURIComponent(message || '任务已加入队列。'));
+}
+export async function controlJob(data: FormData) {
+ const path=projectPath(data); const id=value(data,'job_id'); const action=value(data,'action'); let message='';
+ if(!/^[0-9a-f-]{36}$/i.test(id) || !['cancel','retry'].includes(action)) throw new Error('Invalid job control');
+ try { await api(`/jobs/${id}/${action}`,{method:'POST'}); } catch(error) { message=errorMessage(error); }
+ revalidatePath(path+'/workspace'); redirect(path+'/workspace?message='+encodeURIComponent(message || '任务状态已更新。'));
+}
