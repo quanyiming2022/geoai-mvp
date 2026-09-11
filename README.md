@@ -81,3 +81,12 @@ MapLibre 的 BSD 3-Clause 许可证保留在 docs/licenses/maplibre-gl-6.9.0.txt
 原始文件保持不变，COG 转换在 P4 完成。测试文件由 `.venv/bin/python scripts/make_fixture.py` 本地生成，不提交数据。
 验收：`.venv/bin/python scripts/acceptance_p3.py`。下载链接按成员权限签发，60 秒有效。
 若元数据写入响应中断，API 先按生成的 asset_id 核对；确认成功返回记录，无法确认则返回 registration_uncertain 并保留对象，避免误删已提交文件。此时先刷新影像列表，保留的未登记对象可在恢复后按返回 asset_id 排查，不自动删除不确定数据。
+
+## Raster Worker 与 COG
+上传后 Worker 自动处理，状态为等待处理 → 正在处理 → 可用 / 处理失败；失败时 owner/editor 可重试。
+原始文件不变。Worker 生成 COG、缩略图并记录尺寸、波段、dtype、nodata、原始 CRS、分辨率、WGS84 bbox/PostGIS footprint。
+默认限制 10 亿像素和 300 秒处理时间，通过 MAX_RASTER_PIXELS / RASTER_TIMEOUT_SECONDS 调整。当前地图支持 Web Mercator 有效纬度内、不跨日期变更线的影像；超出范围会明确失败。
+任务在独立进程执行，父进程在超时时终止进程并清理暂存目录；Redis 心跳失败不影响超时监管。
+地图通过用户权限校验后的 XYZ 接口读取短效内部 COG 签名地址，使用 Range + WarpedVRT 重投影，范围外像素透明。
+16-bit / float 显示使用影像缩略样本计算的统一分位数范围，避免每个瓦片单独拉伸产生接缝。支持现有 RGBA / 灰度+alpha。
+验收：`.venv/bin/python scripts/acceptance_p4.py`。PNG 瓦片不携带 GeoTIFF 地理元数据，其定位由 XYZ 坐标确定。

@@ -217,10 +217,28 @@ def run():
                 )
         finally:
             for asset in assets:
+                deadline = time.monotonic() + 330
+                while True:
+                    with connection() as conn:
+                        state = conn.execute(
+                            "SELECT status FROM public.raster_assets WHERE id=%s",
+                            (asset["id"],),
+                        ).fetchone()
+                    if state is None or state[0] in ("ready", "failed"):
+                        break
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Worker did not finish QA asset")
+                    time.sleep(1)
+            for asset in assets:
                 admin.request(
                     "DELETE",
                     "/storage/v1/object/" + asset["bucket"],
-                    json={"prefixes": [asset["object_key"]]},
+                    json={
+                        "prefixes": [
+                            asset["object_key"].rsplit("/", 1)[0] + "/" + name
+                            for name in ("source.tif", "cog.tif", "thumbnail.png")
+                        ]
+                    },
                 ).raise_for_status()
             # raster created_by intentionally restricts deleting an account while its assets exist.
             with connection() as conn:

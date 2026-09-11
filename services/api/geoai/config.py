@@ -12,3 +12,5 @@ class Settings(BaseSettings):
     anon_key: SecretStr
     storage_bucket: str = "geoai"
     max_upload_bytes: int = Field(default=536870912, ge=1024, le=10737418240)
+    max_raster_pixels: int = Field(default=1000000000, ge=1)
+    raster_timeout_seconds: int = Field(default=300, ge=10, le=3600)

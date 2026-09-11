@@ -8,6 +8,7 @@ import httpx
 class ObjectStorageProvider(Protocol):
     def put_object(self, bucket: str, key: str, data: bytes | BinaryIO, mime: str) -> None: ...
     def get_object(self, bucket: str, key: str) -> bytes: ...
+    def download_to_file(self, bucket: str, key: str, path: str) -> None: ...
     def delete_object(self, bucket: str, key: str) -> None: ...
     def head_object(self, bucket: str, key: str) -> dict: ...
     def create_signed_url(self, bucket: str, key: str, expires: int = 300) -> str: ...
@@ -49,6 +50,15 @@ class SupabaseStorage:
             .raise_for_status()
             .content
         )
+
+    def download_to_file(self, bucket, key, path):
+        with self.client.stream(
+            "GET", "object/authenticated/" + self.path(bucket, key)
+        ) as response:
+            response.raise_for_status()
+            with open(path, "wb") as target:
+                for chunk in response.iter_bytes(1024 * 1024):
+                    target.write(chunk)
 
     def delete_object(self, bucket, key):
         self.path(bucket, key)

@@ -59,3 +59,12 @@ export async function manageMember(data: FormData) {
   try { await api(endpoint, { method, body }); } catch (error) { message = errorMessage(error); }
   revalidatePath(path); redirect(path + '?message=' + encodeURIComponent(message || '成员权限已更新。'));
 }
+
+export async function retryRaster(data: FormData) {
+  const path = projectPath(data); const id = value(data, 'asset_id');
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Invalid raster');
+  let message = '';
+  try { await api(`/rasters/${id}/retry`, { method: 'POST' }); } catch (error) { message = errorMessage(error); }
+  revalidatePath(path + '/workspace');
+  redirect(path + '/workspace' + (message ? '?message=' + encodeURIComponent(message) : ''));
+}

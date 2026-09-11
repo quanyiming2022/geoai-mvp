@@ -27,4 +27,4 @@ export async function requireUser() {
   catch (error) { if (error instanceof ApiError && error.status === 401) redirect('/login'); throw error; }
 }
 
-export type RasterAsset = { id: string; project_id: string; filename: string; size: number; checksum: string; status: string; created_at: string };
+export type RasterAsset = { bbox?: [number, number, number, number]; crs?: string; width?: number; height?: number; bands?: number; dtype?: string; error_code?: string; id: string; project_id: string; filename: string; size: number; checksum: string; status: string; created_at: string };

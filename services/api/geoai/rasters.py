@@ -8,7 +8,7 @@ from urllib.parse import unquote
 from uuid import UUID, uuid4
 import httpx
 import rasterio
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from starlette.concurrency import run_in_threadpool
 from .auth import CurrentUser
 from .config import Settings
@@ -48,11 +48,11 @@ def validate_raster(path):
         raise HTTPException(422, "Invalid GeoTIFF") from None
 
 
-def provider(cfg):
+def provider(cfg, internal=False):
     return SupabaseStorage(
         cfg.supabase_url,
         cfg.service_role_key.get_secret_value(),
-        public_url=cfg.supabase_public_url,
+        public_url=cfg.supabase_url if internal else cfg.supabase_public_url,
     )
 
 
@@ -170,3 +170,41 @@ def download(asset_id: UUID, current: CurrentUser):
         raise HTTPException(503, "Object storage unavailable") from None
     finally:
         storage.close()
+
+
+@router.get("/rasters/{asset_id}/tiles/{z}/{x}/{y}.png")
+def tile(asset_id: UUID, z: int, x: int, y: int, current: CurrentUser):
+    from .raster_processing import tile_bounds, render_tile
+
+    try:
+        tile_bounds(z, x, y)
+    except ValueError:
+        raise HTTPException(422, "Invalid XYZ tile") from None
+    row, cfg = asset_for_user(asset_id, current)
+    if row["status"] != "ready":
+        raise HTTPException(409, "Raster processing is not ready")
+    expected = f"{row['project_id']}/rasters/{row['id']}/cog.tif"
+    if row["cog_object_key"] != expected:
+        raise HTTPException(409, "Invalid COG reference")
+    storage = provider(cfg, internal=True)
+    try:
+        url = storage.create_signed_url(cfg.storage_bucket, expected, 60)
+        return Response(render_tile(url, z, x, y, row["display_ranges"]), media_type="image/png")
+    except (httpx.HTTPError, rasterio.errors.RasterioError):
+        raise HTTPException(503, "Raster tile unavailable") from None
+    finally:
+        storage.close()
+
+
+@router.post("/rasters/{asset_id}/retry")
+def retry(asset_id: UUID, current: CurrentUser):
+    asset_for_user(asset_id, current)
+    rows = PostgrestRasterRepository(current.token).request(
+        "PATCH",
+        "raster_assets",
+        params={"id": "eq." + str(asset_id), "status": "eq.failed"},
+        body={"status": "uploaded"},
+    )
+    if not rows:
+        raise HTTPException(403, "Only editors can retry failed rasters")
+    return rows[0]
