@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, model_validator
 from redis import Redis
 from .auth import CurrentUser
 from .config import Settings
@@ -11,15 +11,25 @@ from .spatial import UserSQLRepository
 
 class JobInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    kind: Literal['diagnostic'] = 'diagnostic'
+    kind: Literal['diagnostic','geoextract'] = 'diagnostic'
     idempotency_key: UUID
+    raster_asset_id: UUID | None = None
+    prompt_id: UUID | None = None
+    aoi_id: UUID | None = None
+
+    @model_validator(mode='after')
+    def valid_references(self):
+        refs=(self.raster_asset_id,self.prompt_id,self.aoi_id)
+        if (self.kind=='geoextract' and not all(refs)) or (self.kind=='diagnostic' and any(refs)):
+            raise ValueError('Job inputs do not match kind')
+        return self
 
 
 class JobRepository(UserSQLRepository):
-    columns = 'id,project_id,created_by,kind,status,progress,attempts,result,error_code,created_at,started_at,finished_at'
+    columns = 'id,project_id,created_by,kind,status,progress,attempts,result,error_code,created_at,started_at,finished_at,raster_asset_id,prompt_id,aoi_id'
 
-    def list(self,project_id):
-        return self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s ORDER BY created_at DESC LIMIT 100',(project_id,))
+    def list(self,project_id,offset=0):
+        return self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s ORDER BY created_at DESC,id LIMIT 50 OFFSET %s',(project_id,offset))
 
     def get(self,job_id):
         rows=self.execute(f'SELECT {self.columns} FROM jobs WHERE id=%s',(job_id,))
@@ -28,11 +38,15 @@ class JobRepository(UserSQLRepository):
         return rows[0]
 
     def create(self,project_id,data):
-        rows=self.execute(f'INSERT INTO jobs(project_id,created_by,idempotency_key,kind) VALUES (%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING {self.columns}',(project_id,self.user_id,data.idempotency_key,data.kind))
+        if data.kind=='geoextract':
+            rows=self.execute("SELECT r.id FROM raster_assets r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id))
+            if not rows:
+                raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
+        rows=self.execute(f'INSERT INTO jobs(project_id,created_by,idempotency_key,kind,raster_asset_id,prompt_id,aoi_id) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING {self.columns}',(project_id,self.user_id,data.idempotency_key,data.kind,data.raster_asset_id,data.prompt_id,data.aoi_id))
         if rows:
             return rows[0]
         rows=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))
-        if not rows or rows[0]['kind']!=data.kind:
+        if not rows or rows[0]['kind']!=data.kind or any(str(rows[0][key])!=str(getattr(data,key)) for key in ('raster_asset_id','prompt_id','aoi_id')):
             raise HTTPException(409,'Idempotency key conflicts with another request')
         return rows[0]
 
@@ -61,9 +75,9 @@ router=APIRouter(tags=['jobs'])
 
 
 @router.get('/projects/{project_id}/jobs')
-def list_jobs(project_id: UUID,current: CurrentUser):
+def list_jobs(project_id: UUID,current: CurrentUser,offset: int = Query(default=0,ge=0,le=1000000)):
     accessible(project_id,current)
-    return JobRepository(current.user['id']).list(project_id)
+    return JobRepository(current.user['id']).list(project_id,offset)
 
 
 @router.post('/projects/{project_id}/jobs',status_code=201)

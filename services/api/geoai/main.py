@@ -112,3 +112,6 @@ app.include_router(prompts_router)
 
 from .jobs import router as jobs_router  # noqa: E402
 app.include_router(jobs_router)
+
+from .results import router as results_router  # noqa: E402
+app.include_router(results_router)

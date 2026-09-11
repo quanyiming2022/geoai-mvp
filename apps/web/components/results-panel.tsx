@@ -1,0 +1,5 @@
+import { reviewResult } from '../app/actions';
+import type { ExtractionResult } from './project-map';
+export default function ResultsPanel({results,projectId,editable}:{results:ExtractionResult[];projectId:string;editable:boolean}) {
+ return <section className="card"><h2>候选斑块 · Mock</h2><p className="muted">橙色待审核 · 绿色已接受 · 红色已排除。导出只包含已接受的结果。</p>{results.length===0 && <p>尚无提取结果。</p>}{results.map(result=><article className="asset-item" id={`result-${result.id}`} key={result.id}><strong>{({candidate:'待审核',accepted:'已接受',rejected:'已排除'}[result.review_status] ?? result.review_status)} · {(result.area_m2/10000).toFixed(2)} ha</strong><small>{result.id}</small><span>Mock confidence {result.mean_confidence.toFixed(2)}</span>{editable && <form action={reviewResult}><input type="hidden" name="project_id" value={projectId}/><input type="hidden" name="job_id" value={result.job_id}/><input type="hidden" name="result_id" value={result.id}/><button name="action" value="accepted">接受</button> <button name="action" value="rejected" className="secondary">排除</button></form>}</article>)}</section>;
+}

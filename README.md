@@ -1,7 +1,7 @@
 # GeoAI Platform
 唯一仓库：https://github.com/quanyiming2022/geoai-mvp
 本地目录：`/Users/quanyiming/Projects/geoai-mvp`。GitHub 仅托管代码；所有运行及验收在 Mac 本地完成。
-P0 基础设施、P1 Auth / Projects 和 P2 地图工作空间已实现。验收记录见 `docs/p0-validation.md` 和 `docs/p1-validation.md`。后续阶段仅在前一阶段验证并推送后开始。
+P0 至 P8 Mock GeoExtract 闭环已实现并通过本机验收。记录见 `docs/p0-validation.md`、`docs/p1-validation.md` 和 `docs/p8-validation.md`。真实模型/GPU 阶段尚未启用。
 
 ## 本地准备
 使用 Node 24.21.0（`.nvmrc`）、pnpm 12.3.4（Corepack）、Python 3.12、Docker Compose。
@@ -107,3 +107,9 @@ AOI 存入 PostGIS Polygon，数据库验证闭合、有效性、面积、顶点
 任务与 Raster 分别在独立进程执行，先检查本地超时，再访问网络；启动失败清理进程句柄与暂存目录。claim token 和状态条件阻止旧尝试覆盖取消或新尝试；Worker 中断后的陈旧任务转为失败，可由编辑者重试。
 P7 用 Mock 诊断验证 ComputeProvider。项目页面自动轮询状态，所有者/编辑者可运行、取消或重试，查看者只读。
 验收：`.venv/bin/python scripts/acceptance_p7.py`，包括并发幂等、SQL/RLS、取消竞争、Redis 重启和 Worker 恢复。
+
+## Mock GeoExtract 闭环（P8）
+在工作空间选择已保存的 Visual Prompt 和源影像内的 AOI，运行 Mock GeoExtract。Worker 读取实际样例影像/掩膜和 AOI 影像窗口，经 ComputeProvider 调用 MockAdapter，将模拟概率与 AOI 有效像素掩膜相交，再按真实像素坐标转换为 WGS84 候选多边形。
+地图与任务列表自动更新。点击候选可跳转审核，或在下方接受/排除；原始预测几何不可修改，审核历史由数据库触发器记录。GeoJSON 导出只包含已接受结果，携带源影像、任务、模型版本和生成时间。历史任务可分页浏览，按任务完整查看候选。
+当前为 **mock-v1 测试结果**，不代表真实遥感识别。P8 不启用 SkySense++、GPU 或任何付费服务。AOI 仍采用有界窗口（最多 400 万源像素、最长边 512 输出像素），大范围分块推理属于后续阶段。
+完整验收：`.venv/bin/python scripts/acceptance_p8.py`；包括新账号、项目、上传、COG、样例、AOI、任务、模型、polygon、审核、Next GeoJSON 下载以及直接 SQL/RLS/审计检查。

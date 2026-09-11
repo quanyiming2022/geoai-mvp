@@ -97,3 +97,17 @@ export async function controlJob(data: FormData) {
  try { await api(`/jobs/${id}/${action}`,{method:'POST'}); } catch(error) { message=errorMessage(error); }
  revalidatePath(path+'/workspace'); redirect(path+'/workspace?message='+encodeURIComponent(message || '任务状态已更新。'));
 }
+
+export async function createExtractionJob(data: FormData) {
+ const path=projectPath(data); let message='';
+ try { await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract',idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),aoi_id:value(data,'aoi_id')})}); }
+ catch(error) { message=errorMessage(error); }
+ revalidatePath(path+'/workspace'); redirect(path+'/workspace?message='+encodeURIComponent(message || 'Mock GeoExtract 已加入队列。'));
+}
+export async function reviewResult(data: FormData) {
+ const path=projectPath(data); const id=value(data,'result_id'); let message='';
+ if(!/^[0-9a-f-]{36}$/i.test(id)) throw new Error('Invalid result');
+ try { await api(`/results/${id}/review`,{method:'POST',body:JSON.stringify({action:value(data,'action')})}); } catch(error) { message=errorMessage(error); }
+ const job=value(data,'job_id');
+ revalidatePath(path+'/workspace'); redirect(path+'/workspace?'+(/^[0-9a-f-]{36}$/i.test(job)?'job='+job+'&':'')+'message='+encodeURIComponent(message || '审核已保存，原始预测已保留。'));
+}

@@ -35,6 +35,10 @@ def job_active(cfg,row):
 def execute_job(row,workspace=None):
     cfg=Settings()
     try:
+        if row['kind']=='geoextract':
+            from .extraction import execute_extraction
+            execute_extraction(cfg,row)
+            return
         if row['kind']!='diagnostic':
             raise ValueError('unsupported_job_kind')
         provider=MockComputeProvider(MockAdapter())
