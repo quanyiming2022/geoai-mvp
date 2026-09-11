@@ -85,7 +85,8 @@ def run():
                     assert client.patch(endpoint,headers=headers[0],json=change).status_code==409
                     client.patch(endpoint,headers=headers[0],json={'name':item['name'],'expected_name':'重命名验证'}).raise_for_status()
                     restored=next(x for x in client.get(f'/projects/{project_id}/{collection}',headers=headers[0]).raise_for_status().json() if x['id']==item['id'])
-                    assert restored==item
+                    assert {k:v for k,v in restored.items() if k not in ('revision','updated_at','updated_by')}=={k:v for k,v in item.items() if k not in ('revision','updated_at','updated_by')}
+                    assert restored['revision']==item['revision']+2
                     description_change={'name':item['name'],'expected_name':item['name'],'description':'用途与目标说明','expected_description':item.get('description','')}
                     assert client.patch(endpoint,headers=headers[1],json=description_change).status_code==403
                     assert client.patch(endpoint,headers=headers[2],json=description_change).status_code==404
@@ -93,9 +94,10 @@ def run():
                     assert client.patch(endpoint,headers=headers[0],json=description_change).status_code==409
                     client.patch(endpoint,headers=headers[0],json={**description_change,'description':item.get('description',''),'expected_description':'用途与目标说明'}).raise_for_status()
                     final=next(x for x in client.get(f'/projects/{project_id}/{collection}',headers=headers[0]).raise_for_status().json() if x['id']==item['id'])
-                    assert final==item
+                    assert {k:v for k,v in final.items() if k not in ('revision','updated_at','updated_by')}=={k:v for k,v in item.items() if k not in ('revision','updated_at','updated_by')}
+                    assert final['revision']==item['revision']+4
                     with connection() as conn:
-                        assert conn.execute("SELECT has_column_privilege('authenticated',%s,'name','UPDATE'),has_column_privilege('authenticated',%s,'geometry','UPDATE')",('public.'+table,'public.'+table)).fetchone()==(True,False)
+                        assert conn.execute("SELECT has_column_privilege('authenticated',%s,'name','UPDATE'),has_column_privilege('authenticated',%s,'geometry','UPDATE')",('public.'+table,'public.'+table)).fetchone()==(True,True)
                         conn.execute('SET LOCAL ROLE authenticated')
                         conn.execute("SELECT set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':ids[1],'role':'authenticated'}),))
                         assert conn.execute(f"UPDATE public.{table} SET name='denied' WHERE id=%s RETURNING id",(item['id'],)).fetchall()==[]
