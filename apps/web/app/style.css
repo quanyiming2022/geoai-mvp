@@ -51,3 +51,15 @@ body:has(.gis-workbench) .topbar{display:none}.gis-workbench{height:100dvh}.work
 
 .gis-inspector .context-assistant-button{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-width:28px;padding:4px;margin-left:auto;border:1px solid transparent;background:transparent;border-radius:3px}.context-assistant-button:hover{background:#e3eee8;border-color:#b7cbc0}.context-assistant-button:focus-visible{outline:2px solid #287453;outline-offset:2px}.context-assistant-button svg{width:18px;height:18px}.right-hidden .gis-inspector .context-assistant-button{display:none}
 .assistant-context{margin:8px 0;padding:12px;border:1px solid #d6e0d9;display:grid;gap:9px}.assistant-context legend{padding:0 5px;font-weight:600}.assistant-context label{gap:4px}.assistant-context select,.assistant-context input{font-size:12px;padding:6px 8px}.assistant-window{display:grid;grid-template-columns:1fr 1fr;gap:10px}.task-assistant form>button{justify-self:start}.assistant-context small{color:#657b6e}
+
+/* Object management actions belong to the resource list. */
+.spatial-resource-item {display:flex;align-items:center;gap:4px;min-width:0}
+.spatial-resource-item>.resource-row {flex:1;min-width:0}
+.spatial-resource-item>.object-more {flex:none;width:28px;padding:2px;font-size:20px;line-height:24px}
+.object-action-menu {position:fixed;margin:0;padding:4px;width:144px;border:1px solid #d5ddd9;border-radius:5px;background:#fff;box-shadow:0 4px 16px #182a2226}
+.object-action-menu button,.object-action-menu a {display:block;width:100%;border:0;border-radius:3px;background:transparent;color:#263d33;padding:7px 9px;font-size:12px;text-align:left;text-decoration:none}
+.object-action-menu button:hover,.object-action-menu a:hover {background:#edf3ef}
+.object-rename-dialog {width:min(360px,calc(100vw - 32px));border:1px solid #d5ddd9;border-radius:6px;padding:20px}
+.object-rename-dialog::backdrop {background:#12251b40}
+.object-rename-dialog h3 {margin:0 0 16px;font-size:15px}
+.object-dialog-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:16px}

@@ -74,6 +74,36 @@ def run():
                 outside={**payload,'geometry':{'type':'Polygon','coordinates':[[[0,0],[1,0],[1,1],[0,0]]]}}
                 assert client.post(path,headers=headers[0],json=outside).status_code==422
                 aoi=client.post(f'/projects/{project_id}/aois',headers=headers[0],json={'name':'E2E AOI','geometry':geometry}).raise_for_status().json()
+                # Name-only updates must preserve all spatial/provenance fields.
+                for collection,item,table in [('aois',aoi,'aois'),('prompts',prompt,'visual_prompts')]:
+                    endpoint=f'/projects/{project_id}/{collection}/{item["id"]}'
+                    change={'name':'重命名验证','expected_name':item['name']}
+                    assert client.patch(endpoint,headers=headers[1],json=change).status_code==403
+                    assert client.patch(endpoint,headers=headers[2],json=change).status_code==404
+                    assert client.patch(endpoint,headers=headers[0],json={**change,'geometry':geometry}).status_code==422
+                    client.patch(endpoint,headers=headers[0],json=change).raise_for_status()
+                    assert client.patch(endpoint,headers=headers[0],json=change).status_code==409
+                    client.patch(endpoint,headers=headers[0],json={'name':item['name'],'expected_name':'重命名验证'}).raise_for_status()
+                    restored=next(x for x in client.get(f'/projects/{project_id}/{collection}',headers=headers[0]).raise_for_status().json() if x['id']==item['id'])
+                    assert restored==item
+                    description_change={'name':item['name'],'expected_name':item['name'],'description':'用途与目标说明','expected_description':item.get('description','')}
+                    assert client.patch(endpoint,headers=headers[1],json=description_change).status_code==403
+                    assert client.patch(endpoint,headers=headers[2],json=description_change).status_code==404
+                    client.patch(endpoint,headers=headers[0],json=description_change).raise_for_status()
+                    assert client.patch(endpoint,headers=headers[0],json=description_change).status_code==409
+                    client.patch(endpoint,headers=headers[0],json={**description_change,'description':item.get('description',''),'expected_description':'用途与目标说明'}).raise_for_status()
+                    final=next(x for x in client.get(f'/projects/{project_id}/{collection}',headers=headers[0]).raise_for_status().json() if x['id']==item['id'])
+                    assert final==item
+                    with connection() as conn:
+                        assert conn.execute("SELECT has_column_privilege('authenticated',%s,'name','UPDATE'),has_column_privilege('authenticated',%s,'geometry','UPDATE')",('public.'+table,'public.'+table)).fetchone()==(True,False)
+                        conn.execute('SET LOCAL ROLE authenticated')
+                        conn.execute("SELECT set_config('request.jwt.claims',%s,true)",(json.dumps({'sub':ids[1],'role':'authenticated'}),))
+                        assert conn.execute(f"UPDATE public.{table} SET name='denied' WHERE id=%s RETURNING id",(item['id'],)).fetchall()==[]
+                client.patch(f'/projects/{project_id}/members/{ids[1]}',headers=headers[0],json={'role':'editor'}).raise_for_status()
+                client.patch(f'/projects/{project_id}/aois/{aoi["id"]}',headers=headers[1],json={'name':'编辑者改名','expected_name':aoi['name']}).raise_for_status()
+                client.patch(f'/projects/{project_id}/aois/{aoi["id"]}',headers=headers[1],json={'name':aoi['name'],'expected_name':'编辑者改名'}).raise_for_status()
+                client.patch(f'/projects/{project_id}/members/{ids[1]}',headers=headers[0],json={'role':'viewer'}).raise_for_status()
+                print('PASS: AOI/prompt rename, conflict, immutable spatial data, editor/viewer/outsider and column permissions')
                 request={'kind':'geoextract','idempotency_key':str(uuid.uuid4()),'raster_asset_id':asset['id'],'prompt_id':prompt['id'],'aoi_id':aoi['id']}
                 assert client.get('/admin/llm',headers=headers[0]).status_code==403
                 assert client.put('/admin/llm',headers=headers[0],json={}).status_code in (403,422)

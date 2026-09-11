@@ -6,7 +6,7 @@ from pydantic import Field
 import httpx
 import rasterio
 from .auth import CurrentUser
-from .spatial import AoiInput, UserSQLRepository
+from .spatial import AoiInput, RenameInput, UserSQLRepository
 from .projects import accessible
 from .rasters import asset_for_user, provider
 from .config import Settings
@@ -156,3 +156,9 @@ def preview_prompt(project_id:UUID,data:PromptInput,current:CurrentUser):
     finally:
         storage.close()
         crop_slots.release()
+
+
+@router.patch('/projects/{project_id}/prompts/{resource_id}')
+def rename_prompt(project_id: UUID, resource_id: UUID, data: RenameInput, current: CurrentUser):
+    accessible(project_id, current)
+    return UserSQLRepository(current.user['id']).rename('prompt', project_id, resource_id, data)

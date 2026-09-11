@@ -2,7 +2,7 @@
 
 P8 已冻结为 `v0.1.0-p8`。P9 的真实 GPU / 权重验收尚未完成；本地 fake-real Worker 仅用于验证 HTTP 协议，不代表 SkySense++ 推理。
 
-管理员账号为 `qym57@outlook.com`。在本机平台使用该账号登录，打开 **项目 → Models & Compute**（`/settings/models`）。管理员权限保存在本机数据库，不依赖前端 email 判断。普通用户无法读取或更改服务器配置。
+管理员账号为 `qym57@outlook.com`。在本机平台使用该账号登录，打开 **控制中心 → 模型与计算**（`/control/models`）。管理员权限保存在本机数据库，不依赖前端 email 判断。普通用户无法读取或更改服务器配置。
 
 ## GPU 和权重未就绪时
 
@@ -37,4 +37,6 @@ P8 已冻结为 `v0.1.0-p8`。P9 的真实 GPU / 权重验收尚未完成；本�
 
 ## 尚待真实验收
 
-GPU / 权重就绪后仍需完成三类真实 fixture：support=query、同类不同 query、无关 query，并记录概率 mean/std、前景比例、面积、耗时、峰值显存、seed、slot、endpoint/release/checkpoint 身份。常数、全空或全满输出不得判定成功。单次 query 必须读取 source-resolution 512×512 window；不使用 P8 bounded AOI 缩放作为大图推理。AOI tiling/stitching 留到 P11。
+GPU / 权重就绪后仍需完成四类真实 fixture：same-image、same-class cross-image、unrelated-query、wrong-prompt，并记录概率 mean/std、前景比例、面积、耗时、峰值显存、seed、slot、endpoint/release/checkpoint 身份。常数、全空或全满输出不得判定成功。单次 query 必须读取 source-resolution 512×512 window；不使用 P8 bounded AOI 缩放作为大图推理。AOI tiling/stitching 留到 P11。
+
+最新验收顺序和证据要求见 [P9B 验收门槛](p9b-acceptance-gates.md)。

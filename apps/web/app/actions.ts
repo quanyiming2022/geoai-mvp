@@ -124,3 +124,15 @@ export async function previewVisualPrompt(data:FormData):Promise<{image?:string;
  try {return await api(path+'/prompts/preview',{method:'POST',body:JSON.stringify({name:'Preview',raster_asset_id:value(data,'raster_asset_id'),geometry:JSON.parse(value(data,'geometry'))})});}
  catch{return {error:'预览不可用，请缩小样例并确认其位于所选影像的有效像素内。'};}
 }
+
+
+export async function renameSpatialObject(projectId:string, kind:'aois'|'prompts', id:string, name:string, expectedName:string, description:string, expectedDescription:string) {
+  if (!['aois','prompts'].includes(kind) || ![projectId,id].every(v=>/^[0-9a-f-]{36}$/i.test(v))) return {error:'对象无效。'};
+  try {
+    const updated=await api<{name:string}>(`/projects/${projectId}/${kind}/${id}`,{method:'PATCH',body:JSON.stringify({name,expected_name:expectedName,description,expected_description:expectedDescription})});
+    revalidatePath(`/projects/${projectId}/workspace`);
+    return {name:updated.name};
+  } catch(error) {
+    return {error:error instanceof ApiError && error.status===409?'信息已被修改，请刷新后重试。':errorMessage(error)};
+  }
+}

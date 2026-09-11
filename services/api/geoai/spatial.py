@@ -7,7 +7,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .auth import CurrentUser
 from .config import Settings
 from .projects import accessible
@@ -43,6 +43,21 @@ class AoiInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
     name: str = Field(min_length=1, max_length=120)
     geometry: PolygonInput
+    description: str = Field(default="", max_length=2000)
+
+
+class RenameInput(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=120)
+    expected_name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    expected_description: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def paired_description(self):
+        if (self.description is None) != (self.expected_description is None):
+            raise ValueError("Description and previous value required together")
+        return self
 
 
 class UserSQLRepository:
@@ -70,8 +85,37 @@ class UserSQLRepository:
             raise HTTPException(503, "Spatial data service unavailable") from None
 
 
+    def rename(self, kind, project_id, resource_id, data):
+        # Identifiers are selected internally, never interpolated from a request.
+        table = {"aoi": "aois", "prompt": "visual_prompts"}[kind]
+        roles = self.execute(
+            "SELECT geoai_internal.project_role(%s) AS role", (project_id,)
+        )
+        if not roles or roles[0]["role"] not in ("owner", "editor"):
+            raise HTTPException(403, "Editor access required")
+        if data.description is None:
+            rows = self.execute(
+                f"UPDATE public.{table} SET name=%s WHERE id=%s AND project_id=%s AND name=%s RETURNING id,name,description",
+                (data.name, resource_id, project_id, data.expected_name),
+            )
+        else:
+            rows = self.execute(
+                f"UPDATE public.{table} SET name=%s,description=%s WHERE id=%s AND project_id=%s AND name=%s AND description=%s RETURNING id,name,description",
+                (data.name, data.description, resource_id, project_id, data.expected_name, data.expected_description),
+            )
+        if rows:
+            return rows[0]
+        visible = self.execute(
+            f"SELECT id FROM public.{table} WHERE id=%s AND project_id=%s",
+            (resource_id, project_id),
+        )
+        if not visible:
+            raise HTTPException(404, "Object not found")
+        raise HTTPException(409, "Object changed; refresh before retrying")
+
+
 class PostgisAoiRepository(UserSQLRepository):
-    columns = "id,project_id,name,created_by,created_at,extensions.ST_AsGeoJSON(geometry)::json AS geometry,extensions.ST_Area(geometry::extensions.geography) AS area_m2"
+    columns = "id,project_id,name,description,created_by,created_at,extensions.ST_AsGeoJSON(geometry)::json AS geometry,extensions.ST_Area(geometry::extensions.geography) AS area_m2"
 
     def list_for_project(self, project_id, user_id):
         return self.execute(
@@ -85,8 +129,8 @@ class PostgisAoiRepository(UserSQLRepository):
 
     def create(self, project_id, data):
         return self.execute(
-            f"INSERT INTO public.aois(project_id,created_by,name,geometry) VALUES (%s,%s,%s,extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326)) RETURNING {self.columns}",
-            (project_id, self.user_id, data.name, data.geometry.model_dump_json()),
+            f"INSERT INTO public.aois(project_id,created_by,name,description,geometry) VALUES (%s,%s,%s,%s,extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326)) RETURNING {self.columns}",
+            (project_id, self.user_id, data.name, data.description, data.geometry.model_dump_json()),
         )[0]
 
 
@@ -103,3 +147,9 @@ def list_aois(project_id: UUID, current: CurrentUser):
 def create_aoi(project_id: UUID, data: AoiInput, current: CurrentUser):
     accessible(project_id, current)
     return PostgisAoiRepository(current.user["id"]).create(project_id, data)
+
+
+@router.patch("/projects/{project_id}/aois/{resource_id}")
+def rename_aoi(project_id: UUID, resource_id: UUID, data: RenameInput, current: CurrentUser):
+    accessible(project_id, current)
+    return UserSQLRepository(current.user["id"]).rename("aoi", project_id, resource_id, data)

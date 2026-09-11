@@ -77,3 +77,10 @@ Validation:
 - Full new-job integration acceptance remains separate/pending; prior approval-review restriction on temporary user/project creation was not bypassed.
 
 Assisted sample creation is not implemented by this increment. The text-only LLM can plan metadata/instructions but cannot infer a pixel mask. Future human-assisted sample creation needs a separate visual model (text/point/box → candidate mask → human correction → existing prompt save); do not label text output as automatic segmentation or expand to large AOI inference.
+
+
+## 2026-09-11 confirmation acceptance and revised gate
+
+User explicitly authorized three temporary ordinary accounts and an isolated project, with cleanup. `scripts/acceptance_p9c.py` passed against the real local Qwen and production Docker API/Web: no job before confirmation, owner-bound draft, viewer/outsider rejection, false-confirmation/extra URL rejection, idempotent confirmation, actual Mock job, PostGIS result, reject/accept, Next GeoJSON export, audit and history. Temporary resources were cleaned in `finally`.
+
+User then moved the final P9C gate after P9B: **Language Draft → User Confirm → Real SkySense++ Job → Result**. Therefore the local Mock confirmation gap is resolved, but P9C is not marked COMPLETE. GPU/weights remain unavailable. LAN/cloud remain optional unverified configurations. Assisted Visual Prompt is deferred until after real P9C. See `p9b-acceptance-gates.md`.
