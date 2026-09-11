@@ -68,3 +68,11 @@ export async function retryRaster(data: FormData) {
   revalidatePath(path + '/workspace');
   redirect(path + '/workspace' + (message ? '?message=' + encodeURIComponent(message) : ''));
 }
+
+export async function createAoi(data: FormData) {
+  const path = projectPath(data); let message = '';
+  try { await api(path + '/aois', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), geometry: JSON.parse(value(data, 'geometry')) }) }); }
+  catch (error) { message = errorMessage(error); }
+  revalidatePath(path + '/workspace');
+  redirect(path + '/workspace?message=' + encodeURIComponent(message || 'AOI 已保存。'));
+}

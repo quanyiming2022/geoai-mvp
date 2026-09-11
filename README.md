@@ -90,3 +90,8 @@ MapLibre 的 BSD 3-Clause 许可证保留在 docs/licenses/maplibre-gl-6.9.0.txt
 地图通过用户权限校验后的 XYZ 接口读取短效内部 COG 签名地址，使用 Range + WarpedVRT 重投影，范围外像素透明。
 16-bit / float 显示使用影像缩略样本计算的统一分位数范围，避免每个瓦片单独拉伸产生接缝。支持现有 RGBA / 灰度+alpha。
 验收：`.venv/bin/python scripts/acceptance_p4.py`。PNG 瓦片不携带 GeoTIFF 地理元数据，其定位由 XYZ 坐标确定。
+
+## 图层与 AOI
+工作空间可切换影像显隐、调整透明度。所有者和编辑者可点击两个对角点绘制矩形，或依次点击至少三个顶点绘制多边形，填写名称后保存。保存后结束绘制；查看者只读。
+AOI 存入 PostGIS Polygon，数据库验证闭合、有效性、面积、顶点数量及坐标范围；当前不支持跨日期变更线。API 通过已验证身份设置事务内 authenticated 角色，数据库 RLS 独立生效。
+验收：`.venv/bin/python scripts/acceptance_p5.py`。
