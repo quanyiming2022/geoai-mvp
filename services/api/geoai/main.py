@@ -106,3 +106,6 @@ def ready():
     return JSONResponse(
         {"status": "ok" if ok else "unavailable", "checks": checks}, status_code=200 if ok else 503
     )
+
+from .prompts import router as prompts_router  # noqa: E402
+app.include_router(prompts_router)

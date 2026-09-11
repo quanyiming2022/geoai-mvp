@@ -29,4 +29,4 @@ export async function proxy(request: NextRequest) {
   response.headers.set('Cache-Control', 'private, no-store');
   return response;
 }
-export const config = { matcher: ['/projects/:path*', '/api/rasters/:path*'] };
+export const config = { matcher: ['/projects/:path*', '/api/rasters/:path*', '/api/prompts/:path*'] };

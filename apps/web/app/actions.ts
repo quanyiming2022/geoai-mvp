@@ -76,3 +76,11 @@ export async function createAoi(data: FormData) {
   revalidatePath(path + '/workspace');
   redirect(path + '/workspace?message=' + encodeURIComponent(message || 'AOI 已保存。'));
 }
+
+export async function createPrompt(data: FormData) {
+  const path = projectPath(data); let message = '';
+  try { await api(path + '/prompts', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), raster_asset_id: value(data, 'raster_asset_id'), class_label: value(data, 'class_label'), description: value(data, 'description'), geometry: JSON.parse(value(data, 'geometry')) }) }); }
+  catch (error) { message = errorMessage(error); }
+  revalidatePath(path + '/workspace');
+  redirect(path + '/workspace?message=' + encodeURIComponent(message || 'Visual Prompt 已保存。'));
+}

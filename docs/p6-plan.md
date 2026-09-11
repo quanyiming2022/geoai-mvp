@@ -1,0 +1,2 @@
+# P6 Visual Prompt
+Draw rectangle/polygon on a ready raster; save name/class/description and WGS84 geometry. Generate bounded native-CRS support GeoTIFF and uint8 binary mask with matching transform. Use private ObjectStorageProvider keys and user SQL Repository/RLS. Reject invalid/outside/nodata/oversized samples. Verify pixels, CRS, SQL/RLS, UI drawing and saved artifacts locally before commit/push.

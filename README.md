@@ -95,3 +95,9 @@ MapLibre 的 BSD 3-Clause 许可证保留在 docs/licenses/maplibre-gl-6.9.0.txt
 工作空间可切换影像显隐、调整透明度。所有者和编辑者可点击两个对角点绘制矩形，或依次点击至少三个顶点绘制多边形，填写名称后保存。保存后结束绘制；查看者只读。
 AOI 存入 PostGIS Polygon，数据库验证闭合、有效性、面积、顶点数量及坐标范围；当前不支持跨日期变更线。API 通过已验证身份设置事务内 authenticated 角色，数据库 RLS 独立生效。
 验收：`.venv/bin/python scripts/acceptance_p5.py`。
+
+## Visual Prompt
+在可用影像内绘制矩形或多边形样例，选择源影像并填写名称、类别和描述。类别与描述仅保存为元数据。
+生成的 support image 与二值 support mask 均为 GeoTIFF，保留源 CRS，使用完全一致的尺寸和 transform；掩膜为 0/1，并排除无效像素。最长边 512 像素，采样窗口最多 400 万源像素，最多 16 波段，同时最多两个裁剪请求。旋转影像按实际像素覆盖范围验证，越界或无有效目标像素会拒绝。
+样例产物在私有 Storage 保存，下载按当前项目成员权限签发短效链接。确定失败时清理新对象；数据库结果不确定时保留，避免删除已提交样例。
+验收：`.venv/bin/python scripts/acceptance_p6.py`。实现依据 [Rasterio geometry window/mask](https://rasterio.readthedocs.io/en/stable/api/rasterio.features.html) 与 [resampling](https://rasterio.readthedocs.io/en/stable/topics/resampling.html)。
