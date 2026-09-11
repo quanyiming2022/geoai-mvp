@@ -27,3 +27,7 @@ If loading fails, `/health` remains reachable with `model_loaded=false`; no dumm
 ## Pending acceptance
 
 The NumPy-only layout test runs locally; loading, CUDA determinism, slot mapping against a real checkpoint, latency, peak VRAM, and three actual image fixtures are **unverified**. Current strict deterministic mode may reject unsupported GPU operations; diagnose instead of silently disabling it. Three fixtures must include support=query, same-class different query and unrelated query, with probability distribution and foreground metrics inspected. No AOI tiling/stitching is implemented.
+
+## GPU host deployment archive
+
+See [GPU server installation and offline transfer runbook](../../docs/gpu-server-deployment.md) for the executed host installer, verified container GPU checks, source staging scripts, and remaining runtime/checkpoint gates. The current acceptance requires four fixtures, including wrong-prompt; follow [P9B acceptance gates](../../docs/p9b-acceptance-gates.md).
