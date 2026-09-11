@@ -55,3 +55,12 @@ def test_total_deadline_cancels_slow_provider(monkeypatch):
 def test_remote_cannot_be_activated_without_valid_address():
     config=initial();config.active_mode='lan'
     with pytest.raises(HTTPException):config.checked()
+
+
+def test_decoding_schema_constrains_ids_to_visible_catalog():
+    from geoai.llm import planner_schema
+    schema=planner_schema(resources())
+    assert schema['properties']['raster_id']=={'enum':[None,'r']}
+    assert schema['properties']['endpoint_id']=={'enum':[None]}
+    assert schema['additionalProperties'] is False
+    assert set(schema['required'])==set(schema['properties'])

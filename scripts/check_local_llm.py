@@ -4,7 +4,7 @@ import os
 import time
 from pathlib import Path
 from uuid import uuid4
-from geoai.llm import HttpLLMProvider,Profile,Intent,SYSTEM,build_job
+from geoai.llm import HttpLLMProvider,Profile,Intent,SYSTEM,build_job,planner_schema
 
 os.environ['LLM_LOCAL_URL']='http://127.0.0.1:11434'
 r,p,a=map(str,(uuid4(),uuid4(),uuid4()))
@@ -12,7 +12,8 @@ resources={'rasters':[{'id':r,'filename':'fixture.tif','status':'ready','width':
 checks=[]
 for text,expected in [('请查看当前项目任务状态','status'),('使用 fixture.tif、草地样例和验证范围，生成 Mock 提取测试草案，明确使用 Mock。','extract'),('请自动绘制样例，然后扫描整幅影像并排除天然裸岩。','help')]:
     started=time.monotonic()
-    raw=HttpLLMProvider(Profile(mode='local')).generate([{'role':'system','content':SYSTEM+json.dumps(Intent.model_json_schema(),ensure_ascii=False)},{'role':'user','content':json.dumps({'request':text,'catalog':resources},ensure_ascii=False)}],Intent.model_json_schema())
+    raw=HttpLLMProvider(Profile(mode='local')).generate([{'role':'system','content':SYSTEM+json.dumps(planner_schema(resources),ensure_ascii=False)},{'role':'user','content':json.dumps({'request':text,'catalog':resources},ensure_ascii=False)}],planner_schema(resources))
+    Path("artifacts/p9c-last-intent.json").write_text(raw)
     intent=Intent.model_validate_json(raw)
     assert intent.intent==expected,(expected,intent)
     if expected=='extract':

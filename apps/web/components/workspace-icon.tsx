@@ -1,4 +1,5 @@
 const paths: Record<string,string> = {
+ assistant:'M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6 3V6a2 2 0 0 1 2-2z M7 9h10 M7 13h6',
  data:'M4 4h16v16H4z M4 9h16 M9 9v11',
  layers:'m12 3 9 5-9 5-9-5 9-5z M3 12l9 5 9-5 M3 16l9 5 9-5',
  aois:'M5 5h14v14H5z M3 3h4v4H3z M17 17h4v4h-4z',
