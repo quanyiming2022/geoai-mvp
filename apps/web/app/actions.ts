@@ -93,10 +93,14 @@ export async function controlJob(data: FormData) {
 }
 
 export async function createExtractionJob(data: FormData) {
- const path=projectPath(data); let message='';
- try { await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract',idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),aoi_id:value(data,'aoi_id')})}); }
- catch(error) { message=errorMessage(error); }
- revalidatePath(path+'/workspace'); redirect(path+'/workspace?message='+encodeURIComponent(message || 'Mock GeoExtract 已加入队列。'));
+ const path=projectPath(data);
+ try {
+  const job=await api<{id:string}>(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract',idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),aoi_id:value(data,'aoi_id')})});
+  revalidatePath(path+'/workspace');
+  return {data:job};
+ } catch(error) {
+  return {error:errorMessage(error)};
+ }
 }
 export async function reviewResult(data: FormData) {
  const path=projectPath(data); const id=value(data,'result_id'); let message='';

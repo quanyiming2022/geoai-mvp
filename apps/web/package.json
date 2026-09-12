@@ -1,6 +1,6 @@
 {
   "name": "@geoai/web",
-  "version": "0.2.0-p9c.2",
+  "version": "0.2.0-p9c.3",
   "private": true,
   "scripts": {
     "dev": "node scripts/copy-map-worker.mjs && next dev --hostname 127.0.0.1",

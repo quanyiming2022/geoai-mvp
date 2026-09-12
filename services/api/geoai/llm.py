@@ -140,6 +140,10 @@ CAPABILITY_MESSAGE='当前范围超过单个模型窗口，需要分块扫描。
 from .map_window import resolve_full_aoi
 
 def coverage_message(coverage):
+    if coverage.get('reason')=='multi_tile_required':
+        width=coverage.get('aoi_bbox_width_px');height=coverage.get('aoi_bbox_height_px')
+        size=f'（约 {width:.0f} × {height:.0f} 个源像素）' if isinstance(width,(int,float)) and isinstance(height,(int,float)) else ''
+        return f'当前 AOI 在所选影像中{size}，超过单次 512 × 512 模型窗口，需要分块扫描。大范围自动扫描尚未开放，请缩小 AOI，或绘制一个新的小范围。'
     return {'outside_raster':'当前 AOI 超出所选影像的可读范围，无法完整分析。请调整范围或选择覆盖它的影像。','source_too_small':'所选影像不能提供完整模型输入，请选择更大的 RGB 影像。','pixel_alignment':'当前范围跨越了单个模型窗口的像素边界，无法由一个完整窗口覆盖。请缩小 AOI，或绘制一个新的小范围。','mock_only':'Mock 仅用于有限合成预览，不能作为整个 AOI 的真实分析。'}.get(coverage.get('reason'),CAPABILITY_MESSAGE)
 
 def prepare_execution(intent,project_id,current):

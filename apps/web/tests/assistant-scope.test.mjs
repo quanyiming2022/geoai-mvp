@@ -31,8 +31,61 @@ test('agent is non-modal and project switching retains the existing dirty guard'
  assert.match(navigation,/当前工作区有未保存更改/);
  const assistant=readFileSync('components/task-assistant.tsx','utf8');
  assert.match(assistant,/continuation_id:continuation\?\.continuation_id/);
- assert.match(assistant,/sessionStorage.setItem/);
+ assert.doesNotMatch(assistant,/localStorage\.getItem\(storageKey\+'\:current'/);
+ assert.doesNotMatch(assistant,/localStorage\.setItem\(storageKey\+'\:current'/);
+ assert.doesNotMatch(assistant,/sessionStorage\.getItem\(storageKey\)/);
+ assert.doesNotMatch(assistant,/sessionStorage\.setItem\(storageKey,/);
+ assert.match(assistant,/storageKey\+'\:conversations'/);
  assert.match(assistant,/answer\.draft_id,confirmed:true/);
+});
+
+test('floating assistant has one visible minimize control',()=>{
+ const floating=readFileSync('components/floating-agent.tsx','utf8');
+ const styles=readFileSync('app/style.css','utf8');
+ assert.match(floating,/hidden={open}/);
+ assert.match(floating,/aria-label="收起助手"/);
+ assert.match(styles,/\.agent-launcher\[hidden\]\s*\{display:none\}/);
+});
+
+test('assistant AOI creation resumes from the latest pending task',()=>{
+ const assistant=readFileSync('components/task-assistant.tsx','utf8');
+ const map=readFileSync('components/project-map.tsx','utf8');
+ assert.match(assistant,/resourcePendingRef/);
+ assert.match(assistant,/const pending=resourcePendingRef\.current/);
+ assert.match(assistant,/workspace-assistant-reset/);
+ assert.match(map,/workspace-assistant-reset/);
+});
+
+test('mock workflow can create an AOI and selects the saved AOI',()=>{
+ const source=readFileSync('components/extraction-form.tsx','utf8');
+ assert.match(source,/workspace-agent-ui/);
+ assert.match(source,/action:'create_aoi'/);
+ assert.match(source,/workspace-resource-created/);
+ assert.match(source,/setAoiId\(detail\.id\)/);
+});
+
+test('mock workflow reports submission outcome without leaving the workspace',()=>{
+ const source=readFileSync('components/extraction-form.tsx','utf8');
+ const actions=readFileSync('app/actions.ts','utf8');
+ assert.match(source,/await createExtractionJob\(data\)/);
+ assert.match(source,/role="status"/);
+ assert.match(source,/router\.refresh\(\)/);
+ assert.match(actions,/const job=await api<\{id:string\}>/);
+ assert.match(actions,/return \{data:job\}/);
+});
+
+test('workflow AOI is rejected before save when it exceeds the target raster',()=>{
+ const source=readFileSync('components/project-map.tsx','utf8');
+ assert.match(source,/geometryInsideRaster/);
+ assert.match(source,/AOI 必须完整位于目标影像内/);
+ assert.match(source,/重新绘制/);
+});
+
+test('archived assistant conversations can be deleted individually',()=>{
+ const source=readFileSync('components/task-assistant.tsx','utf8');
+ assert.match(source,/function deleteConversation/);
+ assert.match(source,/aria-label=\{`删除历史对话/);
+ assert.match(source,/saveConversations\(conversations\.filter/);
 });
 
 test('model input remains internal with no point-selection overlay',()=>{

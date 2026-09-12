@@ -308,3 +308,21 @@ def test_large_aoi_never_offers_map_test_even_with_old_coordinates(monkeypatch,e
     assert answer['field']=='aoi_id' and 'create_aoi' in answer['suggested_actions']
     assert 'select_window' not in answer['suggested_actions']
     assert not any('llm:draft:' in key for key in env[-1])
+
+
+def test_large_aoi_offers_only_compatible_alternative_ranges(monkeypatch,env):
+    ids=env[0]
+    compatible={'id':str(uuid4()),'name':'可一次分析','created_at':'2026-09-12T03:00:00Z'}
+    incompatible={'id':str(uuid4()),'name':'其他影像范围','created_at':'2026-09-12T04:00:00Z'}
+    env[1]['aois'].extend([compatible,incompatible])
+    def coverage(project,user,raster,aoi):
+        if str(aoi)==compatible['id']:
+            return {'available':True,'execution_mode':'single_tile_full_aoi','query_col':0,'query_row':0,'aoi_revision':1,'aoi_id':str(aoi),'raster_id':str(raster),'aoi_bbox_width_px':200,'aoi_bbox_height_px':180}
+        reason='outside_raster' if str(aoi)==incompatible['id'] else 'multi_tile_required'
+        return {'available':False,'execution_mode':'multi_tile_full_aoi' if reason=='multi_tile_required' else 'unavailable','reason':reason,'aoi_bbox_width_px':930,'aoi_bbox_height_px':484}
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',coverage)
+    answer=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),aoi_id=ids['aoi'])
+    assert answer['kind']=='capability_unavailable'
+    assert [choice['id'] for choice in answer['choices']]==[compatible['id']]
+    assert '930 × 484' in answer['message']
+    assert '512 × 512' in answer['labels']['能力状态']

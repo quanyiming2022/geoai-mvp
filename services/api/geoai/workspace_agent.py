@@ -162,7 +162,15 @@ def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_overrid
             candidates=[item for item in resources[group] if str(item['id'])!=str(selected['id'])]
             return {**base,'kind':'clarification','field':field,'message':llm.coverage_message(validation),'choices':resource_choices(candidates),'suggested_actions':['create_aoi'] if field=='aoi_id' else ['add_raster']}
         if not capability_check(goal,coverage):
-            return {**base,'kind':'capability_unavailable','execution_mode':coverage['execution_mode'],'code':'CAPABILITY_NOT_AVAILABLE','message':f"已识别“{prompt['name']}”和范围“{aoi['name'] if aoi else '当前范围'}”。"+llm.coverage_message(coverage),'field':'aoi_id','choices':resource_choices([item for item in resources['aois'] if str(item['id'])!=str(aoi['id'])]),'suggested_actions':['create_aoi'],'labels':{'视觉样例':prompt['name'],'范围':aoi['name'] if aoi else '当前范围','执行范围':'整个 AOI','能力状态':'当前不可用'}}
+            compatible=[]
+            for candidate in resources['aois']:
+                if str(candidate['id'])==str(aoi['id']):continue
+                try:alternative=llm.resolve_full_aoi(project_id,current,raster['id'],candidate['id'])
+                except HTTPException:continue
+                if alternative.get('available'):compatible.append(candidate)
+            width=coverage.get('aoi_bbox_width_px');height=coverage.get('aoi_bbox_height_px')
+            capability=(f'需要缩小 · 约 {width:.0f} × {height:.0f} 源像素；单次上限 512 × 512' if coverage.get('reason')=='multi_tile_required' and isinstance(width,(int,float)) and isinstance(height,(int,float)) else '当前不可用')
+            return {**base,'kind':'capability_unavailable','execution_mode':coverage['execution_mode'],'code':'CAPABILITY_NOT_AVAILABLE','message':f"已识别“{prompt['name']}”和范围“{aoi['name'] if aoi else '当前范围'}”。"+llm.coverage_message(coverage),'field':'aoi_id','choices':resource_choices(compatible),'suggested_actions':['create_aoi'],'labels':{'视觉样例':prompt['name'],'范围':aoi['name'] if aoi else '当前范围','执行范围':'整个 AOI','能力状态':capability}}
         if coverage and coverage['available']:
             context.update(query_col=coverage['query_col'],query_row=coverage['query_row'],window_aoi_id=str(aoi['id']),window_source='automatic')
         if details['my_role'] not in ('owner','editor'):return {**base,'kind':'explanation','message':'当前角色可以查看项目，但不能运行模型任务。'}
