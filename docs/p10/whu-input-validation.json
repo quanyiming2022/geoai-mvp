@@ -1,0 +1,485 @@
+{
+  "status": "DATA_READY_FOR_P10_WITH_DOCUMENTED_NODATA_AND_GSD_CAVEATS",
+  "aerial": {
+    "regions": [
+      {
+        "name": "christchurch-urban",
+        "source_url": "https://gpcv.whu.edu.cn/data/1.the%20whole%20aerial%20image.tif",
+        "source_size_bytes": 26301690701,
+        "source_native_gsd_m": 0.075,
+        "source_window": [
+          242832,
+          188904,
+          30720,
+          30720
+        ],
+        "overview_window": [
+          60708.13693111669,
+          47226.421433690935,
+          7680.0173227749765,
+          7680.068534512073
+        ],
+        "source_crs": "EPSG:2193",
+        "output_gsd_m": 0.3,
+        "output_transform": [
+          0.2999999999999673,
+          0.0,
+          1569647.724999998,
+          0.0,
+          -0.2999999999999824,
+          5181952.200000001
+        ],
+        "output_shape": [
+          7680,
+          7680
+        ],
+        "bounds": [
+          1569647.724999998,
+          5179648.200000001,
+          1571951.7249999978,
+          5181952.200000001
+        ],
+        "width_m": 2304,
+        "height_m": 2304,
+        "building_vector_features": 5342,
+        "valid_fraction": 0.9998999701605903,
+        "resampling": "bilinear; explicit official 4x overview; not a native 0.3m sensor acquisition",
+        "range_bytes_so_far": 19054592
+      },
+      {
+        "name": "christchurch-outskirts",
+        "source_url": "https://gpcv.whu.edu.cn/data/1.the%20whole%20aerial%20image.tif",
+        "source_size_bytes": 26301690701,
+        "source_native_gsd_m": 0.075,
+        "source_window": [
+          165500,
+          92904,
+          30720,
+          30720
+        ],
+        "overview_window": [
+          41375.09332419094,
+          23226.207263350487,
+          7680.017322774045,
+          7680.068534512073
+        ],
+        "source_crs": "EPSG:2193",
+        "output_gsd_m": 0.3,
+        "output_transform": [
+          0.2999999999999673,
+          0.0,
+          1563847.8249999986,
+          0.0,
+          -0.2999999999999824,
+          5189152.2
+        ],
+        "output_shape": [
+          7680,
+          7680
+        ],
+        "bounds": [
+          1563847.8249999986,
+          5186848.2,
+          1566151.8249999983,
+          5189152.2
+        ],
+        "width_m": 2304,
+        "height_m": 2304,
+        "building_vector_features": 321,
+        "valid_fraction": 0.9999488152398004,
+        "resampling": "bilinear; explicit official 4x overview; not a native 0.3m sensor acquisition",
+        "range_bytes_so_far": 37355520
+      }
+    ],
+    "transfer": {
+      "bytes": 37355520,
+      "requests": 735,
+      "max_bytes": 402653184
+    }
+  },
+  "scales": [
+    {
+      "region": "christchurch-urban",
+      "gsd_m": 1.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        1.0,
+        0.0,
+        1570543.7249999978,
+        0.0,
+        -1.0,
+        5181056.200000001
+      ],
+      "valid_pixels": 262117,
+      "full_coverage": false,
+      "gt_pixels": 52021,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 512.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-urban",
+      "gsd_m": 1.5,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        1.5,
+        0.0,
+        1570415.7249999978,
+        0.0,
+        -1.5,
+        5181184.200000001
+      ],
+      "valid_pixels": 262113,
+      "full_coverage": false,
+      "gt_pixels": 48406,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 768.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-urban",
+      "gsd_m": 2.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        2.0,
+        0.0,
+        1570287.7249999978,
+        0.0,
+        -2.0,
+        5181312.200000001
+      ],
+      "valid_pixels": 262120,
+      "full_coverage": false,
+      "gt_pixels": 49250,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 1024.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-urban",
+      "gsd_m": 3.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        3.0,
+        0.0,
+        1570031.7249999978,
+        0.0,
+        -3.0,
+        5181568.200000001
+      ],
+      "valid_pixels": 262109,
+      "full_coverage": false,
+      "gt_pixels": 54773,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 1536.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-urban",
+      "gsd_m": 4.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        4.0,
+        0.0,
+        1569775.7249999978,
+        0.0,
+        -4.0,
+        5181824.200000001
+      ],
+      "valid_pixels": 262129,
+      "full_coverage": false,
+      "gt_pixels": 56561,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 2048.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-outskirts",
+      "gsd_m": 1.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        1.0,
+        0.0,
+        1564743.8249999983,
+        0.0,
+        -1.0,
+        5188256.2
+      ],
+      "valid_pixels": 262144,
+      "full_coverage": true,
+      "gt_pixels": 142,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 512.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-outskirts",
+      "gsd_m": 1.5,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        1.5,
+        0.0,
+        1564615.8249999983,
+        0.0,
+        -1.5,
+        5188384.2
+      ],
+      "valid_pixels": 262144,
+      "full_coverage": true,
+      "gt_pixels": 69,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 768.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-outskirts",
+      "gsd_m": 2.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        2.0,
+        0.0,
+        1564487.8249999983,
+        0.0,
+        -2.0,
+        5188512.2
+      ],
+      "valid_pixels": 262144,
+      "full_coverage": true,
+      "gt_pixels": 72,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 1024.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-outskirts",
+      "gsd_m": 3.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        3.0,
+        0.0,
+        1564231.8249999983,
+        0.0,
+        -3.0,
+        5188768.2
+      ],
+      "valid_pixels": 262142,
+      "full_coverage": false,
+      "gt_pixels": 422,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 1536.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    },
+    {
+      "region": "christchurch-outskirts",
+      "gsd_m": 4.0,
+      "shape": [
+        512,
+        512
+      ],
+      "crs": "EPSG:2193",
+      "transform": [
+        4.0,
+        0.0,
+        1563975.8249999983,
+        0.0,
+        -4.0,
+        5189024.2
+      ],
+      "valid_pixels": 262132,
+      "full_coverage": false,
+      "gt_pixels": 1677,
+      "gt_policy": "rasterize original official building vectors on target grid; pixel center rule",
+      "physical_width_m": 2048.0,
+      "same_source_center": true,
+      "fov_note": "different GSD at fixed model size changes physical FOV; use a common geographic evaluation core to isolate scale in later experiments"
+    }
+  ],
+  "satellite": [
+    {
+      "image": "42.tif",
+      "whole_label": "test.tif",
+      "window": [
+        21504,
+        0,
+        512,
+        512
+      ],
+      "transform": [
+        0.33956958,
+        0.0,
+        13982154.211796783,
+        0.0,
+        -0.33956958,
+        4790946.790739033
+      ],
+      "bounds": [
+        13982154.211796783,
+        4790772.931114073,
+        13982328.071421742,
+        4790946.790739033
+      ],
+      "match": "exact binary GT 262144/262144 pixels",
+      "derived_crs": "EPSG:3395",
+      "crs_provenance": "official EA.prj; accepted only after vector-to-matched-raster IoU>0.9",
+      "vector_raster_iou": 1.0,
+      "gt_pixels": 9019,
+      "approx_ground_gsd_m_in_utm51": [
+        0.26179061434147,
+        0.26179061827574013
+      ],
+      "official_web_gsd_m": 2.7,
+      "gsd_conflict": "official web says 2.7m; matched whole-label affine and official vector geometry imply approximately 0.26m. Do not report this subset as 2.7m."
+    },
+    {
+      "image": "43.tif",
+      "whole_label": "test.tif",
+      "window": [
+        22016,
+        0,
+        512,
+        512
+      ],
+      "transform": [
+        0.33956958,
+        0.0,
+        13982328.071421742,
+        0.0,
+        -0.33956958,
+        4790946.790739033
+      ],
+      "bounds": [
+        13982328.071421742,
+        4790772.931114073,
+        13982501.931046702,
+        4790946.790739033
+      ],
+      "match": "exact binary GT 262144/262144 pixels",
+      "derived_crs": "EPSG:3395",
+      "crs_provenance": "official EA.prj; accepted only after vector-to-matched-raster IoU>0.9",
+      "vector_raster_iou": 1.0,
+      "gt_pixels": 4055,
+      "approx_ground_gsd_m_in_utm51": [
+        0.2617908051472356,
+        0.2617908113295725
+      ],
+      "official_web_gsd_m": 2.7,
+      "gsd_conflict": "official web says 2.7m; matched whole-label affine and official vector geometry imply approximately 0.26m. Do not report this subset as 2.7m."
+    },
+    {
+      "image": "1551.tif",
+      "whole_label": "test.tif",
+      "window": [
+        16896,
+        11264,
+        512,
+        512
+      ],
+      "transform": [
+        0.33956958,
+        0.0,
+        13980589.475172142,
+        0.0,
+        -0.33956958,
+        4787121.8789899135
+      ],
+      "bounds": [
+        13980589.475172142,
+        4786948.019364953,
+        13980763.334797103,
+        4787121.8789899135
+      ],
+      "match": "exact binary GT 262144/262144 pixels",
+      "derived_crs": "EPSG:3395",
+      "crs_provenance": "official EA.prj; accepted only after vector-to-matched-raster IoU>0.9",
+      "vector_raster_iou": 1.0,
+      "gt_pixels": 7191,
+      "approx_ground_gsd_m_in_utm51": [
+        0.2618892157626686,
+        0.26188921853075664
+      ],
+      "official_web_gsd_m": 2.7,
+      "gsd_conflict": "official web says 2.7m; matched whole-label affine and official vector geometry imply approximately 0.26m. Do not report this subset as 2.7m."
+    },
+    {
+      "image": "3725.tif",
+      "whole_label": "test.tif",
+      "window": [
+        34816,
+        27136,
+        512,
+        512
+      ],
+      "transform": [
+        0.33956958,
+        0.0,
+        13986674.562045742,
+        0.0,
+        -0.33956958,
+        4781732.230616153
+      ],
+      "bounds": [
+        13986674.562045742,
+        4781558.370991194,
+        13986848.421670701,
+        4781732.230616153
+      ],
+      "match": "exact binary GT 262144/262144 pixels",
+      "derived_crs": "EPSG:3395",
+      "crs_provenance": "official EA.prj; accepted only after vector-to-matched-raster IoU>0.9",
+      "vector_raster_iou": 1.0,
+      "gt_pixels": 10548,
+      "approx_ground_gsd_m_in_utm51": [
+        0.2620373705330216,
+        0.2620373741470222
+      ],
+      "official_web_gsd_m": 2.7,
+      "gsd_conflict": "official web says 2.7m; matched whole-label affine and official vector geometry imply approximately 0.26m. Do not report this subset as 2.7m."
+    }
+  ],
+  "gt_accuracy": "not computed; no model capability verdict"
+}
