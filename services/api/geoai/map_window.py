@@ -38,8 +38,8 @@ def job_window_bounds(repo,project_id,data):
     from fastapi import HTTPException
     from .config import Settings
     from .rasters import provider
-    rows=repo.execute("SELECT cog_object_key FROM raster_assets WHERE id=%s AND project_id=%s AND status='ready'",(data.raster_asset_id,project_id))
-    expected=f'{project_id}/rasters/{data.raster_asset_id}/cog.tif'
+    rows=repo.execute("SELECT cog_object_key,storage_project_id FROM project_rasters WHERE id=%s AND project_id=%s AND status='ready'",(data.raster_asset_id,project_id))
+    expected=f"{rows[0]['storage_project_id'] if rows else project_id}/rasters/{data.raster_asset_id}/cog.tif"
     if not rows or rows[0]['cog_object_key']!=expected:raise HTTPException(422,'所选影像尚不可用')
     cfg=Settings();storage=provider(cfg,internal=True)
     try:
@@ -87,9 +87,9 @@ def resolve_full_aoi(project_id,current,raster_id,aoi_id):
     from .config import Settings
     from .rasters import provider
     repo=UserSQLRepository(current.user['id'])
-    rows=repo.execute("SELECT a.revision,extensions.ST_AsGeoJSON(a.geometry,17)::json AS geometry,r.cog_object_key FROM aois a JOIN raster_assets r ON r.project_id=a.project_id WHERE a.id=%s AND r.id=%s AND a.project_id=%s AND a.deleted_at IS NULL AND r.status='ready'",(aoi_id,raster_id,project_id))
+    rows=repo.execute("SELECT a.revision,extensions.ST_AsGeoJSON(a.geometry,17)::json AS geometry,r.cog_object_key,r.storage_project_id FROM aois a JOIN project_rasters r ON r.project_id=a.project_id WHERE a.id=%s AND r.id=%s AND a.project_id=%s AND a.deleted_at IS NULL AND r.status='ready'",(aoi_id,raster_id,project_id))
     if not rows:raise HTTPException(422,'请选择当前项目中可用的影像与 AOI。')
-    row=rows[0];key=f'{project_id}/rasters/{raster_id}/cog.tif'
+    row=rows[0];key=f"{row['storage_project_id']}/rasters/{raster_id}/cog.tif"
     if row['cog_object_key']!=key:raise HTTPException(422,'影像尚不可用。')
     cfg=Settings();storage=provider(cfg,internal=True)
     try:

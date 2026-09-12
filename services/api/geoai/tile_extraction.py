@@ -92,7 +92,8 @@ def execute_tile(cfg,row):
                 'query_key':frozen['query_raster']['cog_object_key'],
                 'query_ranges':frozen['query_raster']['display_ranges']}
         for role,raster in [('support',inputs['support_raster']),('query',row['raster_asset_id'])]:
-            if inputs[role+'_key']!=f"{row['project_id']}/rasters/{raster}/cog.tif":
+            origin=frozen[role+'_raster'].get('storage_project_id',row['project_id'])
+            if inputs[role+'_key']!=f"{origin}/rasters/{raster}/cog.tif":
                 raise ModelWorkerError('inference_failed')
         support,mask,support_window=read_support_tile(storage.create_signed_url(cfg.storage_bucket,inputs['support_key'],60),inputs['geometry'],inputs['support_ranges'])
         query,valid,transform,crs=read_native_tile(storage.create_signed_url(cfg.storage_bucket,inputs['query_key'],60),row['query_col'],row['query_row'],inputs['query_ranges'])

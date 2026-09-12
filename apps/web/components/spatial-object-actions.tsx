@@ -3,7 +3,7 @@ import {useRef,useState,useId} from 'react';
 import {useRouter} from 'next/navigation';
 import {renameSpatialObject,deleteSpatialObject} from '../app/actions';
 
-export default function SpatialObjectActions({projectId,id,kind,name,description,editable,onLocate,onEdit,onDeleted,revision}:{projectId:string;id:string;kind:'aois'|'prompts';name:string;description:string;editable:boolean;onLocate:()=>void;onEdit:()=>void;onDeleted:()=>void;revision:number}) {
+export default function SpatialObjectActions({projectId,id,kind,name,description,editable,onEdit,onDeleted,revision}:{projectId:string;id:string;kind:'aois'|'prompts';name:string;description:string;editable:boolean;onLocate:()=>void;onEdit:()=>void;onDeleted:()=>void;revision:number}) {
   const router=useRouter();
   const menuId=useId();
   const menu=useRef<HTMLDivElement>(null),dialog=useRef<HTMLDialogElement>(null);
@@ -16,7 +16,7 @@ export default function SpatialObjectActions({projectId,id,kind,name,description
   return <>
     <button className="secondary object-more" aria-label={`${name} 的操作`} title="更多操作" aria-haspopup="true" popoverTarget={menuId} onClick={event=>{const rect=event.currentTarget.getBoundingClientRect();if(menu.current){menu.current.style.left=`${Math.max(8,rect.right-144)}px`;menu.current.style.top=`${Math.min(rect.bottom+4,window.innerHeight-150)}px`;}event.stopPropagation();}}>⋯</button>
     <div id={menuId} ref={menu} popover="auto" className="object-action-menu" aria-label={`${name} 的操作菜单`}>
-      <button onClick={()=>{menu.current?.hidePopover();onLocate();}}>定位到地图</button>
+
       {editable&&<><button onClick={()=>openEditor('name')}>重命名</button><button onClick={()=>{menu.current?.hidePopover();onEdit();}}>编辑</button><button onClick={()=>{menu.current?.hidePopover();setMessage('');removeDialog.current?.showModal();}}>删除</button></>}
       {kind==='prompts'&&<><a href={`/api/prompts/${id}/image/download`}>下载样例影像</a><a href={`/api/prompts/${id}/mask/download`}>下载样例掩膜</a></>}
     </div>

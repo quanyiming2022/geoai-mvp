@@ -93,7 +93,7 @@ class PostgrestRasterRepository(PostgrestRepository):
     def list_for_project(self, project_id, user_id):
         return self.request(
             "GET",
-            "raster_assets",
+            "project_rasters",
             params={"project_id": "eq." + str(project_id), "order": "created_at.desc"},
         )
 
@@ -103,3 +103,7 @@ class PostgrestRasterRepository(PostgrestRepository):
 
     def create(self, data):
         return self.request("POST", "raster_assets", body=data)[0]
+
+    def get_in_project(self, resource_id, project_id):
+        rows=self.request('GET','project_rasters',params={'id':'eq.'+str(resource_id),'project_id':'eq.'+str(project_id)})
+        return rows[0] if rows else None

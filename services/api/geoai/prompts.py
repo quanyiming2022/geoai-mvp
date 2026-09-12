@@ -33,8 +33,8 @@ class PromptRepository(UserSQLRepository):
         rows = self.execute(f"SELECT {self.columns} FROM public.visual_prompts WHERE id=%s AND deleted_at IS NULL", (resource_id,))
         return rows[0] if rows else None
 
-    def validate(self, raster_id, geometry):
-        rows = self.execute("SELECT extensions.ST_IsValid(g) AND extensions.ST_Covers(footprint,g) AND extensions.ST_Area(g::extensions.geography)>0 AS valid, geoai_internal.project_role(project_id) AS role FROM public.raster_assets, LATERAL (SELECT extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326) AS g) q WHERE id=%s AND status='ready'", (geometry, raster_id))
+    def validate(self, raster_id, geometry, project_id):
+        rows = self.execute("SELECT extensions.ST_IsValid(g) AND extensions.ST_Covers(footprint,g) AND extensions.ST_Area(g::extensions.geography)>0 AS valid, geoai_internal.project_role(project_id) AS role FROM public.project_rasters, LATERAL (SELECT extensions.ST_SetSRID(extensions.ST_GeomFromGeoJSON(%s),4326) AS g) q WHERE id=%s AND project_id=%s AND status='ready'", (geometry, raster_id, project_id))
         if not rows or rows[0]['role'] not in ('owner','editor'):
             raise HTTPException(403, 'Prompt creation requires editor access')
         if not rows[0]['valid']:
@@ -60,12 +60,12 @@ def list_prompts(project_id: UUID, current: CurrentUser):
 @router.post('/projects/{project_id}/prompts', status_code=201)
 def create_prompt(project_id: UUID, data: PromptInput, current: CurrentUser):
     accessible(project_id, current)
-    asset, cfg = asset_for_user(data.raster_asset_id, current)
+    asset, cfg = asset_for_user(data.raster_asset_id, current, project_id)
     if asset['project_id'] != str(project_id):
         raise HTTPException(422, 'Raster belongs to another project')
     repo = PromptRepository(current.user['id'])
-    repo.validate(data.raster_asset_id, data.geometry.model_dump_json())
-    expected = f"{project_id}/rasters/{asset['id']}/cog.tif"
+    repo.validate(data.raster_asset_id, data.geometry.model_dump_json(),project_id)
+    expected = f"{asset.get('storage_project_id',asset['project_id'])}/rasters/{asset['id']}/cog.tif"
     if asset.get('cog_object_key') != expected:
         raise HTTPException(409, 'Invalid COG reference')
     if not crop_slots.acquire(blocking=False):
@@ -125,11 +125,11 @@ def preview_prompt(project_id:UUID,data:PromptInput,current:CurrentUser):
     import numpy as np
     from rasterio.io import MemoryFile
     accessible(project_id,current)
-    asset,cfg=asset_for_user(data.raster_asset_id,current)
+    asset,cfg=asset_for_user(data.raster_asset_id,current,project_id)
     if asset['project_id']!=str(project_id):
         raise HTTPException(422,'Raster belongs to another project')
-    PromptRepository(current.user['id']).validate(data.raster_asset_id,data.geometry.model_dump_json())
-    expected=f"{project_id}/rasters/{asset['id']}/cog.tif"
+    PromptRepository(current.user['id']).validate(data.raster_asset_id,data.geometry.model_dump_json(),project_id)
+    expected=f"{asset.get('storage_project_id',asset['project_id'])}/rasters/{asset['id']}/cog.tif"
     if asset.get('cog_object_key')!=expected:
         raise HTTPException(409,'Invalid COG reference')
     if not crop_slots.acquire(blocking=False):
@@ -198,9 +198,9 @@ def edit_prompt(project_id:UUID,resource_id:UUID,data:PromptEditInput,current:Cu
     if not old or str(old['project_id'])!=str(project_id):raise HTTPException(404,'Prompt not found')
     if old['revision']!=data.expected_revision:raise HTTPException(409,'Prompt changed; refresh before retrying')
     if str(old['raster_asset_id'])!=str(data.raster_asset_id):raise HTTPException(422,'Prompt source cannot change')
-    repo.validate(data.raster_asset_id,data.geometry.model_dump_json())
-    asset,cfg=asset_for_user(data.raster_asset_id,current)
-    expected=f"{project_id}/rasters/{asset['id']}/cog.tif"
+    repo.validate(data.raster_asset_id,data.geometry.model_dump_json(),project_id)
+    asset,cfg=asset_for_user(data.raster_asset_id,current,project_id)
+    expected=f"{asset.get('storage_project_id',asset['project_id'])}/rasters/{asset['id']}/cog.tif"
     if asset.get('cog_object_key')!=expected:raise HTTPException(409,'Invalid COG reference')
     if not crop_slots.acquire(blocking=False):raise HTTPException(429,'Support crop busy')
     storage=provider(cfg,internal=True)

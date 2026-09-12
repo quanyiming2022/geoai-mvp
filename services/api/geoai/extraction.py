@@ -49,7 +49,7 @@ def execute_extraction(cfg,row):
             'support_mask_object':frozen['prompt']['support_mask_object'],
             'aoi':frozen['aoi']['geometry']}
     prefix=f"{row['project_id']}/"
-    expected=[prefix+f"rasters/{row['raster_asset_id']}/cog.tif",inputs['support_image_object'],inputs['support_mask_object']]
+    expected=[f"{inputs.get('storage_project_id',row['project_id'])}/rasters/{row['raster_asset_id']}/cog.tif",inputs['support_image_object'],inputs['support_mask_object']]
     pattern=re.escape(prefix+f"prompts/{row['prompt_id']}/")+r'(versions/[0-9a-f-]{36}/)?'
     if inputs['bucket']!=cfg.storage_bucket or inputs['cog_object_key']!=expected[0] or not re.fullmatch(pattern+'image.tif',expected[1]) or expected[2]!=expected[1].removesuffix('image.tif')+'mask.tif':
         raise ValueError('invalid_input_storage_reference')

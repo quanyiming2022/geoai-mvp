@@ -196,6 +196,7 @@ def run():
             if project_id:
                 with connection() as conn:
                     conn.execute('DELETE FROM public.projects WHERE id=%s',(project_id,))
+                    conn.execute('DELETE FROM public.raster_assets WHERE project_id=%s',(project_id,))
             for uid in ids:
                 admin.delete('/auth/v1/admin/users/'+uid).raise_for_status()
 

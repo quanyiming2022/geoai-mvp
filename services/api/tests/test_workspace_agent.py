@@ -178,3 +178,31 @@ def test_full_aoi_confirmation_rechecks_revision(monkeypatch,env):
     assert error.value.status_code==409 and not calls
     coverage['aoi_revision']=1
     assert agent.llm.confirm(ids['project'],request,user)['id']=='submitted' and len(calls)==1
+
+
+def test_missing_aoi_offers_creation_and_pending_goal(monkeypatch,env):
+    env[1]['aois']=[]
+    response=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),text='提取整个范围')
+    assert response['kind']=='clarification'
+    assert response['suggested_actions']==['create_aoi']
+    assert response['continuation_id']
+    assert response['context_update']['prompt_id']==env[0]['prompt']
+    ids=env[0]
+    new_aoi={'id':ids['aoi'],'name':'新范围','geometry':{'type':'Polygon','coordinates':[]}}
+    env[1]['aois'].append(new_aoi)
+    coverage={'available':True,'execution_mode':'single_tile_full_aoi','aoi_id':ids['aoi'],'raster_id':ids['raster'],'query_col':0,'query_row':0,'aoi_revision':1}
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:coverage)
+    monkeypatch.setattr(agent,'parse_goal',lambda *args: (_ for _ in ()).throw(AssertionError('must resume saved goal')))
+    ctx={**response['context_update'],'aoi_id':ids['aoi']}
+    resumed=agent.agent(ids['project'],agent.AgentRequest(text='已创建新范围',workspace_context=ctx,continuation_id=response['continuation_id']),SimpleNamespace(user={'id':ids['user']}))
+    assert resumed['kind']=='draft' and resumed['execution_mode']=='single_tile_full_aoi'
+    assert resumed['context_update']['prompt_id']==ids['prompt']
+
+
+def test_worker_draft_accepts_prompt_from_another_raster(monkeypatch,env):
+    other=str(uuid4())
+    env[1]['rasters'].append({**env[1]['rasters'][0],'id':other,'filename':'Query B'})
+    response=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),raster_id=other,prompt_id=env[0]['prompt'],query_col=0,query_row=0,window_source='map')
+    assert response['kind']=='draft'
+    assert response['labels']['影像']=='Query B'
+    assert response['context_update']['prompt_id']==env[0]['prompt']

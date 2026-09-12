@@ -24,6 +24,7 @@ def run():
     key=env['SERVICE_ROLE_KEY']
     ids=[]
     project_id=None
+    second_project=None
     objects=[]
     fixture=ROOT/'artifacts/p8-fixture.tif'
     fixture.parent.mkdir(exist_ok=True)
@@ -128,11 +129,68 @@ def run():
                 assert all(r['job_id']==newer['id'] for r in latest) and any(r['id']==result['id'] and r['review_status']=='accepted' for r in older)
                 page=client.get(f'/projects/{project_id}/jobs?offset=1',headers=headers[0]).raise_for_status().json()
                 assert page[0]['id']==job['id']
+                second_project=client.post('/projects',headers=headers[0],json={'name':'Shared raster Project B'}).raise_for_status().json()['id']
+                link=f'/projects/{second_project}/rasters/{asset["id"]}/link'
+                client.post(link,headers=headers[0]).raise_for_status()
+                shared=client.get(f'/projects/{second_project}/rasters',headers=headers[0]).raise_for_status().json()[0]
+                assert shared['cog_object_key']==asset['cog_object_key'] and shared['storage_project_id']==project_id
+                shared_prompt=client.post(f'/projects/{second_project}/prompts',headers=headers[0],json=payload).raise_for_status().json()
+                objects.extend([shared_prompt['support_image_object'],shared_prompt['support_mask_object']])
+                shared_aoi=client.post(f'/projects/{second_project}/aois',headers=headers[0],json={'name':'Project B AOI','geometry':geometry}).raise_for_status().json()
+                shared_job=client.post(f'/projects/{second_project}/jobs',headers=headers[0],json={**request,'prompt_id':shared_prompt['id'],'aoi_id':shared_aoi['id'],'idempotency_key':str(uuid.uuid4())}).raise_for_status().json()
+                for _ in range(100):
+                    shared_job=client.get('/jobs/'+shared_job['id'],headers=headers[0]).raise_for_status().json()
+                    if shared_job['status'] in ('succeeded','failed'):break
+                    time.sleep(1)
+                assert shared_job['status']=='succeeded',shared_job.get('error_code')
+                assert not any(p['id']==prompt['id'] for p in client.get(f'/projects/{second_project}/prompts',headers=headers[0]).json())
+                client.post(f'/projects/{second_project}/members',headers=headers[0],json={'user_id':ids[1],'role':'editor'}).raise_for_status()
+                client.patch(f'/projects/{second_project}/rasters/{asset["id"]}',headers=headers[1],json={'name':'Editor alias'}).raise_for_status()
+                assert client.request('DELETE',f'/raster-assets/{asset["id"]}',headers=headers[1],json={'confirmed':True}).status_code==403
+                client.patch(f'/projects/{second_project}/rasters/{asset["id"]}',headers=headers[0],json={'name':'项目 B 别名'}).raise_for_status()
+                assert client.get(f'/projects/{project_id}/rasters',headers=headers[0]).json()[0]['filename']==asset['filename']
+                duplicate=client.post(f'/projects/{second_project}/rasters',headers={**headers[0],'X-Filename':'same.tif'},content=fixture.read_bytes())
+                assert duplicate.status_code==409 and duplicate.json()['detail']['code']=='RASTER_EXISTS'
+                assert client.request('DELETE',f'/raster-assets/{asset["id"]}',headers=headers[0],json={'confirmed':True}).status_code==409
+                assert client.patch(f'/projects/{project_id}/rasters/{asset["id"]}',headers=headers[1],json={'name':'forbidden'}).status_code==403
+                assert client.request('DELETE',f'/projects/{project_id}/rasters/{asset["id"]}/link',headers=headers[1],json={'confirmed':True}).status_code==403
+                revision=accepted['revision']
+                changes={'expected_revision':revision,'result_name':'建筑提取结果-01','description':'成果维护验收'}
+                assert client.patch('/results/'+result['id'],headers=headers[1],json=changes).status_code==403
+                renamed=client.patch('/results/'+result['id'],headers=headers[0],json=changes).raise_for_status().json()
+                assert renamed['result_name']=='建筑提取结果-01' and renamed['description']=='成果维护验收'
+                assert client.patch('/results/'+result['id'],headers=headers[0],json=changes).status_code==409
+                ring=result['geometry']['coordinates'][0];cx=sum(p[0] for p in ring[:-1])/len(ring[:-1]);cy=sum(p[1] for p in ring[:-1])/len(ring[:-1])
+                edited_geom={'type':'Polygon','coordinates':[[[cx+(p[0]-cx)*0.8,cy+(p[1]-cy)*0.8] for p in ring]]}
+                edited=client.patch('/results/'+result['id'],headers=headers[0],json={'expected_revision':renamed['revision'],'geometry':edited_geom}).raise_for_status().json()
+                exported=client.get('/results/'+result['id']+'/export',headers=headers[0]).raise_for_status().json()
+                assert exported['features'][0]['geometry']==edited['geometry'] and edited['area_m2']<result['area_m2']
+                webexport=httpx.get(web+'/api/results/'+result['id']+'/export',cookies={'geoai-access':sessions[0]['access_token']},timeout=20).raise_for_status()
+                assert 'filename*=UTF-8' in webexport.headers['content-disposition']
+                delete={'expected_revision':edited['revision'],'confirmed':True}
+                assert client.request('DELETE','/results/'+result['id'],headers=headers[1],json=delete).status_code==403
+                client.request('DELETE','/results/'+result['id'],headers=headers[0],json=delete).raise_for_status()
+                assert not any(r['id']==result['id'] for r in client.get(f'/projects/{project_id}/results',params={'job_id':job['id']},headers=headers[0]).json())
+                assert client.get('/jobs/'+job['id'],headers=headers[0]).json()['result']['result_count']>0
+                revisions=client.get('/results/'+result['id']+'/revisions',headers=headers[0]).raise_for_status().json()
+                assert [r['operation'] for r in revisions][-3:]==['metadata','geometry','delete']
+                with connection() as conn:
+                    assert conn.execute('SELECT extensions.ST_AsGeoJSON(geometry)::json FROM extraction_results WHERE id=%s',(result['id'],)).fetchone()[0]==result['geometry']
+                client.request('DELETE',f'/projects/{project_id}/rasters/{asset["id"]}/link',headers=headers[0],json={'confirmed':True}).raise_for_status()
+                assert len(client.get(f'/projects/{second_project}/rasters',headers=headers[0]).json())==1
+                assert client.get('/jobs/'+job['id']+'/export',headers=headers[0]).status_code==200
+                client.request('DELETE',link,headers=headers[0],json={'confirmed':True}).raise_for_status()
+                client.request('DELETE',f'/raster-assets/{asset["id"]}',headers=headers[0],json={'confirmed':True}).raise_for_status()
+                assert not any(r['id']==asset['id'] for r in client.get('/raster-assets',headers=headers[0]).json())
+                assert client.get('/jobs/'+job['id'],headers=headers[0]).status_code==200
+                print('PASS: asset reuse/dedup/alias/unlink/soft deletion; result rename/geometry/export/revisions/soft deletion; viewer denial and immutable history')
                 print('PASS: historical job results and job pagination')
                 print('PASS: P8 login/project/upload/COG/prompt/AOI/job/MockAdapter/polygon/reject/accept/Next GeoJSON export; SQL RLS, original prediction immutable and audit history verified')
         finally:
             for obj in objects:
                 admin.request('DELETE','/storage/v1/object/'+env['STORAGE_BUCKET'],json={'prefixes':[obj]}).raise_for_status()
+            if second_project:
+                with connection() as conn:conn.execute('DELETE FROM public.projects WHERE id=%s',(second_project,))
             if project_id:
                 with connection() as conn:
                     conn.execute('DELETE FROM public.projects WHERE id=%s',(project_id,))

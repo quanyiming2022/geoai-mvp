@@ -41,6 +41,8 @@ def run():
                 project=client.post('/projects',json={'name':'P9 temporary native-tile acceptance'}).raise_for_status().json()['id']
                 assets=[]
                 for name in ('support.tif','different-query.tif'):
+                    # Distinct acquisition identity; duplicate bytes now intentionally reuse an asset.
+                    with rasterio.open(fixture,'r+') as ds:ds.update_tags(acquisition_fixture=name)
                     asset=client.post(f'/projects/{project}/rasters',headers={'X-Filename':name},content=fixture.read_bytes()).raise_for_status().json()
                     for _ in range(180):
                         asset=next(r for r in client.get(f'/projects/{project}/rasters').raise_for_status().json() if r['id']==asset['id'])
@@ -124,6 +126,7 @@ def run():
             with connection() as conn:
                 if project:
                     conn.execute('DELETE FROM public.projects WHERE id=%s',(project,))
+                    conn.execute('DELETE FROM public.raster_assets WHERE project_id=%s',(project,))
                 if endpoint:
                     conn.execute('DELETE FROM geoai_internal.model_endpoints WHERE id=%s',(endpoint,))
                 if release:

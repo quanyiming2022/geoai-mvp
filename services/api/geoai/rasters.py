@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import psycopg
 import os
 import tempfile
 from urllib.parse import unquote
@@ -99,6 +100,17 @@ def persist(path, filename, size, checksum, project_id, current, cfg):
         storage.close()
 
 
+def persist_deduplicated(path, filename, size, checksum, project_id, current, cfg):
+    # Serialize equal uploads by the same principal across API processes. The
+    # lookup still uses their JWT/RLS; unrelated private assets remain invisible.
+    with psycopg.connect(cfg.database_url.get_secret_value(), connect_timeout=5) as lock:
+        lock.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (current.user["id"]+":"+checksum,))
+        existing=PostgrestRasterRepository(current.token).request("GET","raster_assets",params={"checksum":"eq."+checksum,"deleted_at":"is.null","select":"id,name","limit":"1"})
+        if existing:
+            raise HTTPException(409,{"code":"RASTER_EXISTS","asset_id":existing[0]["id"],"name":existing[0]["name"],"message":"该影像已存在于影像库，是否直接添加到当前项目？"})
+        return persist(path,filename,size,checksum,project_id,current,cfg)
+
+
 @router.get("/projects/{project_id}/rasters")
 def list_rasters(project_id: UUID, current: CurrentUser):
     accessible(project_id, current)
@@ -143,18 +155,19 @@ async def upload(project_id: UUID, request: Request, current: CurrentUser):
                     await run_in_threadpool(target.write, chunk)
             validate_header(prefix)
             return await run_in_threadpool(
-                persist, path, filename, size, digest.hexdigest(), project_id, current, cfg
+                persist_deduplicated, path, filename, size, digest.hexdigest(), project_id, current, cfg
             )
         finally:
             os.unlink(path)
 
 
-def asset_for_user(asset_id, current):
-    row = PostgrestRasterRepository(current.token).get(asset_id, current.user["id"])
+def asset_for_user(asset_id, current, project_id=None):
+    repo=PostgrestRasterRepository(current.token)
+    row = repo.get_in_project(asset_id,project_id) if project_id else repo.get(asset_id,current.user['id'])
     if row is None:
         raise HTTPException(404, "Raster not found")
     cfg = Settings()
-    canonical = f"{row['project_id']}/rasters/{row['id']}/source.tif"
+    canonical = f"{row.get('storage_project_id',row['project_id'])}/rasters/{row['id']}/source.tif"
     if row["object_key"] != canonical or row["bucket"] != cfg.storage_bucket:
         raise HTTPException(409, "Invalid asset storage reference")
     return row, cfg
@@ -183,7 +196,7 @@ def tile(asset_id: UUID, z: int, x: int, y: int, current: CurrentUser):
     row, cfg = asset_for_user(asset_id, current)
     if row["status"] != "ready":
         raise HTTPException(409, "Raster processing is not ready")
-    expected = f"{row['project_id']}/rasters/{row['id']}/cog.tif"
+    expected = f"{row.get('storage_project_id',row['project_id'])}/rasters/{row['id']}/cog.tif"
     if row["cog_object_key"] != expected:
         raise HTTPException(409, "Invalid COG reference")
     storage = provider(cfg, internal=True)

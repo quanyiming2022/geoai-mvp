@@ -7,14 +7,18 @@ export const cookieOptions = { httpOnly: true, sameSite: 'lax' as const,
 export type Session = { access_token: string; refresh_token: string; expires_in: number; confirmation_required?: boolean };
 export type Project = { id: string; name: string; description: string; owner_id: string; created_at: string; my_role: string; members: Member[] };
 export type Member = { user_id: string; role: string };
-export class ApiError extends Error { constructor(public status: number) { super('Request failed'); } }
+export class ApiError extends Error { constructor(public status: number, public referenceCount?: number) { super('Request failed'); } }
 export async function api<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const access = token ?? (await cookies()).get('geoai-access')?.value;
   const response = await fetch(`${process.env.GEOAI_API_URL}${path}`, {
     ...init, cache: 'no-store', signal: AbortSignal.timeout(20000),
     headers: { 'Content-Type': 'application/json', ...(access ? { Authorization: `Bearer ${access}` } : {}), ...init.headers }
   });
-  if (!response.ok) throw new ApiError(response.status);
+  if (!response.ok) {
+    let referenceCount: number|undefined;
+    if(response.status===409){const body=await response.json().catch(()=>null);const detail=body?.detail;if(detail?.code==='ASSET_REFERENCED'&&Number.isSafeInteger(detail.reference_count)&&detail.reference_count>=0)referenceCount=detail.reference_count;}
+    throw new ApiError(response.status,referenceCount);
+  }
   return response.status === 204 ? undefined as T : response.json();
 }
 export async function saveSession(session: Session) {

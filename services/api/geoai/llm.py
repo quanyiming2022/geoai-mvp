@@ -90,7 +90,8 @@ class HttpLLMProvider:
     def __init__(self,p:Profile):self.p=p
     def generate(self,messages,schema):
         async def bounded():
-            return await asyncio.wait_for(self._generate(messages,schema),timeout=self.p.timeout_seconds)
+            from .assistant_cancellation import cancellable
+            return await asyncio.wait_for(cancellable(self._generate(messages,schema)),timeout=self.p.timeout_seconds)
         try:return asyncio.run(bounded())
         except TimeoutError:raise HTTPException(504,'语言模型请求超时，手动工作流仍可使用。') from None
 
@@ -126,7 +127,7 @@ class HttpLLMProvider:
 def catalog(project_id,current):
     accessible(project_id,current)
     repo=PostgrestRepository(current.token)
-    assets=repo.request('GET','raster_assets',params={'project_id':f'eq.{project_id}','select':'id,filename,status,width,height,bands','limit':'101'})
+    assets=repo.request('GET','project_rasters',params={'project_id':f'eq.{project_id}','select':'id,filename,status,width,height,bands','limit':'101'})
     prompts=repo.request('GET','visual_prompts',params={'project_id':f'eq.{project_id}','select':'id,name,raster_asset_id','deleted_at':'is.null','limit':'101'})
     aois=repo.request('GET','aois',params={'project_id':f'eq.{project_id}','select':'id,name','deleted_at':'is.null','limit':'101'})
     endpoints=available_endpoints(current)
@@ -348,9 +349,9 @@ def map_window(project_id:UUID,data:MapWindowInput,current:CurrentUser):
     from .map_window import select_window
     import rasterio
     accessible(project_id,current)
-    asset,cfg=asset_for_user(data.raster_id,current)
+    asset,cfg=asset_for_user(data.raster_id,current,project_id)
     if str(asset['project_id'])!=str(project_id):raise HTTPException(404,'Raster not found')
-    key=f"{project_id}/rasters/{data.raster_id}/cog.tif"
+    key=f"{asset.get('storage_project_id',asset['project_id'])}/rasters/{data.raster_id}/cog.tif"
     if asset.get('cog_object_key')!=key:raise HTTPException(409,'Raster unavailable')
     aoi_geometry=None
     if data.aoi_id:
@@ -367,3 +368,14 @@ def map_window(project_id:UUID,data:MapWindowInput,current:CurrentUser):
     except ValueError as error:raise HTTPException(422,str(error)) from None
     except (httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'地图选区暂不可用') from None
     finally:storage.close()
+
+
+class CoverageInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    raster_id:UUID
+    aoi_id:UUID
+
+@router.post('/projects/{project_id}/assistant/coverage')
+def check_aoi_coverage(project_id:UUID,data:CoverageInput,current:CurrentUser):
+    coverage=resolve_full_aoi(project_id,current,data.raster_id,data.aoi_id)
+    return {**coverage,'message':'当前范围可一次完整分析，已自动选择模型输入窗口。' if coverage['available'] else coverage_message(coverage)}

@@ -27,7 +27,7 @@ def run(mode):
                 assert db.execute("SELECT count(*) FROM jobs WHERE project_id=%s AND status IN ('queued','running')",(state['project'],)).fetchone()[0]==0
                 objects=[x[0] for x in db.execute("SELECT name FROM storage.objects WHERE bucket_id=%s AND split_part(name,'/',1)=%s",(env['STORAGE_BUCKET'],state['project'])).fetchall()]
             for name in objects:admin.request('DELETE','/storage/v1/object/'+env['STORAGE_BUCKET'],json={'prefixes':[name]}).raise_for_status()
-            with connection() as db:db.execute('DELETE FROM projects WHERE id=%s AND owner_id=%s',(state['project'],state['uid']));db.commit()
+            with connection() as db:db.execute('DELETE FROM projects WHERE id=%s AND owner_id=%s',(state['project'],state['uid']));db.execute('DELETE FROM raster_assets WHERE project_id=%s',(state['project'],));db.commit()
             admin.delete('/auth/v1/admin/users/'+state['uid']).raise_for_status();CREDS.unlink();print('PASS: isolated project, objects and ordinary account cleaned');return
         u=dotenv_values(CREDS);c.headers['Authorization']='Bearer '+c.post('/auth/login',json={'email':u['EMAIL'],'password':u['PASSWORD']}).raise_for_status().json()['access_token']
         if mode=='setup':

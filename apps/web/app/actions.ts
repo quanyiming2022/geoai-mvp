@@ -70,19 +70,13 @@ export async function retryRaster(data: FormData) {
 }
 
 export async function createAoi(data: FormData) {
-  const path = projectPath(data); let message = '';
-  try { await api(path + '/aois', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), geometry: JSON.parse(value(data, 'geometry')) }) }); }
-  catch (error) { message = errorMessage(error); }
-  revalidatePath(path + '/workspace');
-  redirect(path + '/workspace?message=' + encodeURIComponent(message || 'AOI 已保存。'));
+  try { return {data:await api<{id:string;name:string}>(projectPath(data) + '/aois', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), geometry: JSON.parse(value(data, 'geometry')) }) })}; }
+  catch (error) { return {error:errorMessage(error)}; }
 }
 
 export async function createPrompt(data: FormData) {
-  const path = projectPath(data); let message = '';
-  try { await api(path + '/prompts', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), raster_asset_id: value(data, 'raster_asset_id'), class_label: value(data, 'class_label'), description: value(data, 'description'), geometry: JSON.parse(value(data, 'geometry')) }) }); }
-  catch (error) { message = errorMessage(error); }
-  revalidatePath(path + '/workspace');
-  redirect(path + '/workspace?message=' + encodeURIComponent(message || 'Visual Prompt 已保存。'));
+  try { return {data:await api<{id:string;name:string}>(projectPath(data) + '/prompts', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), raster_asset_id: value(data, 'raster_asset_id'), class_label: value(data, 'class_label'), description: value(data, 'description'), geometry: JSON.parse(value(data, 'geometry')) }) })}; }
+  catch (error) { return {error:errorMessage(error)}; }
 }
 
 export async function createDiagnosticJob(data: FormData) {
@@ -114,7 +108,7 @@ export async function reviewResult(data: FormData) {
 
 export async function createTileJob(data: FormData) {
  const path=projectPath(data);let message='';
- try {await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',aoi_id:value(data,'aoi_id')||undefined,idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:Number(value(data,'query_col')),query_row:Number(value(data,'query_row')),seed:Number(value(data,'seed'))})});}
+ try {let queryCol=Number(value(data,'query_col')),queryRow=Number(value(data,'query_row'));if(value(data,'execution_scope')==='full_aoi'){const coverage=await api<{available:boolean;query_col:number;query_row:number;message:string}>(path+'/assistant/coverage',{method:'POST',body:JSON.stringify({raster_id:value(data,'raster_asset_id'),aoi_id:value(data,'aoi_id')})});if(!coverage.available)message=coverage.message;else{queryCol=coverage.query_col;queryRow=coverage.query_row;}}if(!message)await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',aoi_id:value(data,'aoi_id')||undefined,idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:queryCol,query_row:queryRow,seed:Number(value(data,'seed'))})});}
  catch(error){message=errorMessage(error);}
  revalidatePath(path+'/workspace');redirect(path+'/workspace?message='+encodeURIComponent(message||'单 Tile 提取任务已加入队列。'));
 }

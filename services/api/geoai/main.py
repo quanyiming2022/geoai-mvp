@@ -140,3 +140,6 @@ app.include_router(llm_router)
 
 from .workspace_agent import router as workspace_agent_router
 app.include_router(workspace_agent_router)
+
+from .asset_library import router as asset_library_router
+app.include_router(asset_library_router)

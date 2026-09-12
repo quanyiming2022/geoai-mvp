@@ -29,6 +29,7 @@ class AgentRequest(BaseModel):
     text:str=Field(min_length=1,max_length=2000)
     workspace_context:ViewContext
     allow_external_metadata:bool=False
+    request_id:UUID|None=None
     continuation_id:UUID|None=None
     accept_single_tile:bool=False
 
@@ -40,9 +41,8 @@ def workspace(project_id,current,context):
     jobs=list_jobs(project_id,current,offset=0)
     def result_by_id(identifier):
         if not identifier:return None
-        rows=ResultRepository(current.user['id']).execute(f'SELECT {ResultRepository.columns} FROM extraction_results WHERE id=%s AND project_id=%s',(identifier,project_id))
-        if not rows:raise HTTPException(404,'结果不存在或不可访问。')
-        return rows[0]
+        rows=ResultRepository(current.user['id']).execute(f'SELECT {ResultRepository.columns} FROM extraction_results WHERE id=%s AND project_id=%s AND deleted_at IS NULL',(identifier,project_id))
+        return rows[0] if rows else None
     selected_result=result_by_id(context.selected_result or context.last_result)
     if context.last_job:
         recent=JobRepository(current.user['id']).get(context.last_job)
@@ -81,7 +81,7 @@ def ui_action(action,resource,kind):
 
 
 def clarify(error,context):
-    return {'kind':'clarification','message':error.message,'context_update':context,'field':error.field,'choices':[{'id':str(x['id']),'name':x.get('name',x.get('filename','对象'))} for x in error.candidates], 'suggested_actions':['check_compute'] if error.field=='endpoint_id' and not error.candidates else ['create_prompt'] if error.field=='prompt_id' and not error.candidates else []}
+    return {'kind':'clarification','message':error.message,'context_update':context,'field':error.field,'choices':[{'id':str(x['id']),'name':x.get('name',x.get('filename','对象'))} for x in error.candidates], 'suggested_actions':['check_compute'] if error.field=='endpoint_id' and not error.candidates else ['create_prompt'] if error.field=='prompt_id' and not error.candidates else ['create_aoi'] if error.field=='aoi_id' and not error.candidates else []}
 
 def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_override=None):
     details,resources,recent,result,unified=workspace(project_id,current,data.workspace_context)
@@ -149,8 +149,7 @@ def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_overrid
     except ResolutionError as error:return {**base,**clarify(error,context)}
 
 
-@router.post('/projects/{project_id}/assistant/agent')
-def agent(project_id:UUID,data:AgentRequest,current:CurrentUser):
+def run_conversation(project_id:UUID,data:AgentRequest,current:CurrentUser):
     goal=None
     if data.continuation_id:
         with llm.cache() as cache:raw=cache.get(f'geoai:agent:pending:{data.continuation_id}')
@@ -206,3 +205,24 @@ def cancel(project_id:UUID,data:CancelConfirm,current:CurrentUser):
 @router.post('/projects/{project_id}/assistant/context')
 def get_workspace_context(project_id:UUID,context:ViewContext,current:CurrentUser):
     return workspace(project_id,current,context)[4]
+
+
+def cancellation_key(project_id,user_id,request_id):
+    return f'geoai:agent:cancel-request:{user_id}:{project_id}:{request_id}'
+
+@router.post('/projects/{project_id}/assistant/agent')
+def agent(project_id:UUID,data:AgentRequest,current:CurrentUser):
+    from .assistant_cancellation import checker,check_cancelled
+    if not data.request_id:return run_conversation(project_id,data,current)
+    def cancelled():
+        with llm.cache() as cache:return bool(cache.get(cancellation_key(project_id,current.user['id'],data.request_id)))
+    token=checker.set(cancelled)
+    try:
+        check_cancelled();response=run_conversation(project_id,data,current);check_cancelled();return response
+    finally:checker.reset(token)
+
+@router.post('/projects/{project_id}/assistant/requests/{request_id}/cancel')
+def cancel_request(project_id:UUID,request_id:UUID,current:CurrentUser):
+    project(project_id,current)
+    with llm.cache() as cache:cache.set(cancellation_key(project_id,current.user['id'],request_id),'1',ex=1800)
+    return {'status':'cancelled'}
