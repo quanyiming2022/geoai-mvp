@@ -49,3 +49,52 @@ def job_window_bounds(repo,project_id,data):
     except ValueError as error:raise HTTPException(422,str(error)) from None
     except rasterio.errors.RasterioError:raise HTTPException(503,'暂时无法读取模型窗口，请稍后重试') from None
     finally:storage.close()
+
+
+def plan_full_aoi(ds,geometry):
+    """Resolve geographic coverage using the inverse source affine, including rotation.
+
+    Snap only round-trip numerical noise (<1e-7 source pixel). Never use a
+    geographic bbox or a resized preview to infer native pixel capacity.
+    """
+    local=transform_geom('EPSG:4326',ds.crs,geometry)
+    def points(value):
+        if isinstance(value[0],(float,int)):yield value
+        else:
+            for part in value:yield from points(part)
+    pixels=[(~ds.transform)*(p[0],p[1]) for p in points(local['coordinates'])]
+    def snap(v):return float(round(v)) if abs(v-round(v))<1e-7 else v
+    left,top=map(snap,(min(p[0] for p in pixels),min(p[1] for p in pixels)))
+    right,bottom=map(snap,(max(p[0] for p in pixels),max(p[1] for p in pixels)))
+    width,height=right-left,bottom-top
+    plan={'requested_scope':'full_aoi','execution_mode':'single_tile_full_aoi','available':False,'aoi_bbox_width_px':width,'aoi_bbox_height_px':height,'model_input_width':512,'model_input_height':512}
+    if width>512 or height>512:return {**plan,'execution_mode':'multi_tile_full_aoi','reason':'multi_tile_required'}
+    if left<0 or top<0 or right>ds.width or bottom>ds.height:return {**plan,'reason':'outside_raster'}
+    if ds.width<512 or ds.height<512 or ds.count<3:return {**plan,'reason':'source_too_small'}
+    col_min=max(0,math.ceil(right-512));col_max=min(ds.width-512,math.floor(left))
+    row_min=max(0,math.ceil(bottom-512));row_max=min(ds.height-512,math.floor(top))
+    if col_min>col_max or row_min>row_max:return {**plan,'reason':'pixel_alignment'}
+    col=max(col_min,min(col_max,math.floor((left+right-512)/2)))
+    row=max(row_min,min(row_max,math.floor((top+bottom-512)/2)))
+    return {**plan,'available':True,'reason':None,'query_col':col,'query_row':row,'width':512,'height':512,'geometry':window_footprint(ds,col,row)}
+
+
+def resolve_full_aoi(project_id,current,raster_id,aoi_id):
+    """Authorized COG header + AOI read. No model calls or writes."""
+    import rasterio,httpx
+    from fastapi import HTTPException
+    from .spatial import UserSQLRepository
+    from .config import Settings
+    from .rasters import provider
+    repo=UserSQLRepository(current.user['id'])
+    rows=repo.execute("SELECT a.revision,extensions.ST_AsGeoJSON(a.geometry,17)::json AS geometry,r.cog_object_key FROM aois a JOIN raster_assets r ON r.project_id=a.project_id WHERE a.id=%s AND r.id=%s AND a.project_id=%s AND a.deleted_at IS NULL AND r.status='ready'",(aoi_id,raster_id,project_id))
+    if not rows:raise HTTPException(422,'请选择当前项目中可用的影像与 AOI。')
+    row=rows[0];key=f'{project_id}/rasters/{raster_id}/cog.tif'
+    if row['cog_object_key']!=key:raise HTTPException(422,'影像尚不可用。')
+    cfg=Settings();storage=provider(cfg,internal=True)
+    try:
+        with rasterio.Env(GDAL_HTTP_TIMEOUT='15',GDAL_HTTP_MAX_RETRY='1'):
+            with rasterio.open(storage.create_signed_url(cfg.storage_bucket,key,60)) as ds:
+                return {**plan_full_aoi(ds,row['geometry']),'raster_id':str(raster_id),'aoi_id':str(aoi_id),'aoi_revision':row['revision']}
+    except (ValueError,httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'暂时无法检查范围覆盖能力，请稍后重试。') from None
+    finally:storage.close()

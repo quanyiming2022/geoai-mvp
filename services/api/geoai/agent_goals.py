@@ -3,7 +3,7 @@ import re
 from typing import Literal
 from pydantic import BaseModel,ConfigDict,Field
 
-CAPABILITIES={'visual_prompt_segmentation':True,'single_tile':True,'full_aoi':False,'multi_shot':False,'text_to_mask':False,'language_conditioned_segmentation':False}
+CAPABILITIES={'visual_prompt_segmentation':True,'single_tile':True,'single_tile_full_aoi':True,'multi_tile_full_aoi':False,'multi_shot':False,'text_to_mask':False,'language_conditioned_segmentation':False}
 ERRORS={'endpoint_unreachable':'当前 GPU 服务无法连接。','request_timeout':'模型测试超时，未产生可用结果。','timeout':'模型测试超时，未产生可用结果。','cuda_oom':'GPU 显存不足，任务没有产生有效结果。','inference_failed':'模型推理未完成，请检查计算节点后重试。','invalid_response':'模型响应未通过有效性检查，不能作为 GIS 成果。','cancelled':'任务已取消。'}
 class AgentGoal(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -61,13 +61,13 @@ def enforce_goal_scope(goal,text):
     whole=bool(re.search(r'所有|整个|全部|全范围|全图|full[ _-]?aoi|whole|entire',text,re.I))
     if goal.goal_type in ('extract_similar','test_model_here'):
         if whole or goal.requested_execution_scope=='full_aoi':return goal.model_copy(update={'goal_type':'extract_similar','requested_execution_scope':'full_aoi'})
-        if re.search(r'测试|试试|再测|single[ _-]?tile|test',text,re.I):return goal.model_copy(update={'goal_type':'test_model_here','scope':'selected_location','requested_execution_scope':'single_tile'})
+        if re.search(r'测试|试试|再测|在这里跑一下|single[ _-]?tile|test',text,re.I):return goal.model_copy(update={'goal_type':'test_model_here','scope':'selected_location','requested_execution_scope':'single_tile'})
         return goal.model_copy(update={'requested_execution_scope':'full_aoi'})
     return goal
 
 
-def capability_check(goal):
-    return goal.requested_execution_scope!='full_aoi'
+def capability_check(goal,coverage=None):
+    return goal.requested_execution_scope!='full_aoi' or bool(coverage and coverage.get('available'))
 
 
 def job_message(job):

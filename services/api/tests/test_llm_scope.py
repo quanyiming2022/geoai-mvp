@@ -23,6 +23,7 @@ def test_full_aoi_blocked_before_llm_and_never_downgraded(monkeypatch):
     r,p,a,e=map(str,[uuid4(),uuid4(),uuid4(),uuid4()])
     resources={'rasters':[{'id':r,'filename':'SPOT'}],'prompts':[{'id':p,'name':'Building'}],'aois':[{'id':a,'name':'12aoi'}],'endpoints':[{'id':e,'model_name':'SkySense++'}]}
     monkeypatch.setattr(llm,'catalog',lambda *args:resources)
+    monkeypatch.setattr(llm,'resolve_full_aoi',lambda *args:{'available':False,'execution_mode':'multi_tile_full_aoi','reason':'multi_tile_required'})
     monkeypatch.setattr(llm,'configuration',lambda:pytest.fail('Unavailable capability must not depend on LLM'))
     data=llm.PlanInput(text='用这个样例提取12aoi中所有的',workspace_context=llm.WorkspaceContext(channel='worker',raster_id=r,prompt_id=p,aoi_id=a,endpoint_id=e,query_col=0,query_row=0))
     answer=llm.plan(uuid4(),data,SimpleNamespace())

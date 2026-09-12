@@ -45,6 +45,7 @@ def env(monkeypatch):
     details={'my_role':'owner'};recent={'id':str(uuid4()),'status':'succeeded','result':{'runtime_ms':8200,'result_count':2},'progress':100};result={'id':str(uuid4()),'job_id':recent['id'],'geometry':{'type':'Polygon','coordinates':[]}}
     monkeypatch.setattr(agent,'workspace',lambda *args:(details,resources,recent,result,{}))
     monkeypatch.setattr(agent.llm,'configuration',lambda:SimpleNamespace(active_mode='local'))
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:{'available':False,'execution_mode':'multi_tile_full_aoi','reason':'multi_tile_required'})
     saved={}
     class Cache:
         def __enter__(self):return self
@@ -143,3 +144,37 @@ def test_confirmed_cancel_delegates_to_existing_authorized_job_api(monkeypatch,e
     assert calls==[(env[3]['id'],'cancel',env[0]['user'])]
     with pytest.raises(HTTPException) as e:agent.cancel(env[0]['project'],request,SimpleNamespace(user={'id':str(uuid4())}))
     assert e.value.status_code==404 and len(calls)==1
+
+
+def test_small_full_aoi_auto_window_requires_confirmation_not_map(monkeypatch,env):
+    ids=env[0]
+    coverage={'available':True,'execution_mode':'single_tile_full_aoi','aoi_id':ids['aoi'],'raster_id':ids['raster'],'query_col':20,'query_row':30,'aoi_revision':1,'geometry':{'type':'Polygon','coordinates':[]}}
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:coverage)
+    answer=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),text='提取整个AOI')
+    assert answer['kind']=='draft' and answer['conversation_state']=='NEED_CONFIRMATION'
+    assert answer['execution_mode']=='single_tile_full_aoi' and answer['query_window']==coverage
+    assert 'select_window' not in answer.get('suggested_actions',[])
+    import json
+    draft=json.loads(env[-1]['geoai:llm:draft:'+answer['draft_id']])
+    assert draft['execution_scope']=='full_aoi' and draft['job']['query_col']==20 and draft['job']['aoi_id']==ids['aoi']
+    # Explicit local test does not inherit the automatic full-range position.
+    assert run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'))['kind']=='select_window'
+
+
+def test_auto_full_aoi_window_is_not_an_explicit_test_location(monkeypatch,env):
+    answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),raster_id=env[0]['raster'],query_col=0,query_row=0,window_source='automatic')
+    assert answer['kind']=='select_window'
+
+
+def test_full_aoi_confirmation_rechecks_revision(monkeypatch,env):
+    ids=env[0];coverage={'available':True,'execution_mode':'single_tile_full_aoi','aoi_id':ids['aoi'],'raster_id':ids['raster'],'query_col':20,'query_row':30,'aoi_revision':1}
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:coverage)
+    answer=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),text='提取整个AOI')
+    monkeypatch.setattr(agent.llm,'project',lambda *args:{'my_role':'owner'})
+    calls=[];monkeypatch.setattr(agent.llm,'create_job',lambda *args:calls.append(args) or {'id':'submitted'})
+    request=agent.llm.ConfirmInput(draft_id=answer['draft_id'],confirmed=True);user=SimpleNamespace(user={'id':ids['user']})
+    coverage['aoi_revision']=2
+    with pytest.raises(HTTPException) as error:agent.llm.confirm(ids['project'],request,user)
+    assert error.value.status_code==409 and not calls
+    coverage['aoi_revision']=1
+    assert agent.llm.confirm(ids['project'],request,user)['id']=='submitted' and len(calls)==1
