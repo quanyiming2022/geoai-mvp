@@ -194,7 +194,7 @@ def build_job(intent:Intent,resources:dict,draft_id:UUID,coverage=None):
     labels=scope_labels(intent,resources,'可用')
     if intent.channel=='mock':
         aoi=find('aois',intent.aoi_id)
-        if not aoi or str(prompt['raster_asset_id'])!=str(raster['id']):raise HTTPException(422,'Mock 需要同源视觉样例和已保存 AOI。')
+        if not aoi:raise HTTPException(422,'Mock 需要已保存 AOI。')
         payload.update(kind='geoextract',aoi_id=str(aoi['id']));labels.update(计算通道='Mock · 合成流程验证',搜索范围=aoi['name'],执行范围='单次有限预览 · Mock（非全 AOI 推理）')
     elif intent.channel=='worker':
         endpoint=find('endpoints',intent.endpoint_id)

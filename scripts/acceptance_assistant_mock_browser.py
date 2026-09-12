@@ -17,7 +17,7 @@ def send(text):
 
 
 def draw_small_aoi(name):
-    click('＋ 在地图上绘制 AOI')
+    click('＋ 在目标影像上绘制 AOI')
     browser('wait','800')
     box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
     if isinstance(box,str):box=json.loads(box)
@@ -29,7 +29,7 @@ def draw_small_aoi(name):
 
 
 def verify_outside_aoi_is_not_saved():
-    click('＋ 在地图上绘制 AOI')
+    click('＋ 在目标影像上绘制 AOI')
     browser('wait','800')
     box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
     if isinstance(box,str):box=json.loads(box)
@@ -45,7 +45,7 @@ def verify_outside_aoi_is_not_saved():
 
 
 def verify_large_in_bounds_aoi_is_not_saved():
-    click('＋ 在地图上绘制 AOI')
+    click('＋ 在目标影像上绘制 AOI')
     browser('wait','800')
     box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
     if isinstance(box,str):box=json.loads(box)
@@ -79,7 +79,7 @@ def run():
     # Old active-session payloads from earlier releases must not be restored.
     storage=f'geoai-agent:{email}:{state["project"]}'
     stale=json.dumps({'history':[{'role':'user','text':'OLD-CONVERSATION'}]})
-    js(f"sessionStorage.setItem({json.dumps(storage)},{json.dumps(stale)});localStorage.setItem({json.dumps(storage+':current')},{json.dumps(stale)})")
+    js(f"sessionStorage.setItem({json.dumps(storage)},{json.dumps(stale)});localStorage.setItem({json.dumps(storage+':current')},{json.dumps(stale)});localStorage.removeItem({json.dumps(storage+':conversations')})")
     browser('reload');open_assistant()
     assert '从一个目标开始' in body() and 'OLD-CONVERSATION' not in body()
     assert js("document.querySelector('.agent-launcher').hidden")
@@ -90,17 +90,29 @@ def run():
     assert '刚才任务怎么样' in body()
     click('收起助手')
     browser('select','.extraction-launch select','mock');click('运行提取')
-    assert '＋ 在地图上绘制 AOI' in body()
+    assert '＋ 在目标影像上绘制 AOI' in body()
+    assert js("document.querySelector('form:has(h3) select[name=raster_asset_id]').value")==''
     assert js("document.querySelector('form:has(h3) select[name=aoi_id]').value")==''
+    assert js("[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('在目标影像上绘制 AOI'))?.disabled")
+    browser('select','form:has(h3) select[name=raster_asset_id]',state['asset']['id'])
+    wait_for(lambda:not js("[...document.querySelectorAll('button')].find(button=>button.textContent?.includes('在目标影像上绘制 AOI'))?.disabled"),'target raster selection')
     new_name='Mock 新范围-'+str(time.time_ns())
     draw_small_aoi(new_name)
     wait_for(lambda:js("document.querySelector('form:has(h3) select[name=aoi_id]').selectedOptions[0]?.textContent")==new_name,'Mock AOI selection survives refresh')
-    click('运行 Mock GeoExtract')
-    wait_for(lambda:'Mock GeoExtract 已加入队列，可在底部任务栏查看进度。' in body(),'Mock submission feedback')
     verify_outside_aoi_is_not_saved()
     verify_large_in_bounds_aoi_is_not_saved()
-    click('关闭工作流');open_assistant()
+    click('运行 Mock GeoExtract')
+    wait_for(lambda:'Mock GeoExtract 已加入队列，可在底部任务栏查看进度。' in body(),'Mock submission feedback')
+    wait_for(lambda:'任务已完成，结果已显示在地图上。' in body(),'manual completion feedback and result selection')
+    if '关闭工作流' in body():click('关闭工作流')
+    open_assistant()
+    click('新建对话')
     assert '从一个目标开始' in body() and '刚才任务怎么样' not in body()
+    click('历史对话 · 1')
+    js("window.confirm=()=>true")
+    browser('find','role','button','click','--name','删除历史对话“刚才任务怎么样”','--exact')
+    wait_for(lambda:'历史对话 · 0' in body(),'initial archived conversation deletion')
+    click('历史对话 · 0')
 
     # Leaving and re-entering Workspace also starts a fresh active conversation.
     send('刚才任务怎么样')
@@ -112,7 +124,7 @@ def run():
     js("window.confirm=()=>true")
     browser('find','role','button','click','--name','删除历史对话“刚才任务怎么样”','--exact')
     wait_for(lambda:'历史对话 · 0' in body(),'archived conversation deletion')
-    print('PASS: one minimize control, no stale session or resource selection restore, AOI defaults empty, Mock-created AOI is selected, Mock submission is acknowledged, outside and oversized AOIs are blocked before save, archived history can be deleted, re-entry starts fresh')
+    print('PASS: no stale selection restore, target raster and AOI require explicit selection, Mock-created AOI is selected, manual completion selects and displays its result, outside and oversized AOIs are blocked before save, archived history can be deleted, re-entry starts fresh')
 
 
 if __name__=='__main__':run()

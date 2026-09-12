@@ -64,14 +64,42 @@ test('mock workflow can create an AOI and selects the saved AOI',()=>{
  assert.match(source,/setAoiId\(detail\.id\)/);
 });
 
+test('mock workflow keeps support and target rasters independent',()=>{
+ const source=readFileSync('components/extraction-form.tsx','utf8');
+ const page=readFileSync('app/projects/[id]/workspace/page.tsx','utf8');
+ assert.match(source,/rasters:RasterAsset\[\]/);
+ assert.match(source,/name="raster_asset_id"/);
+ assert.match(source,/请选择目标影像/);
+ assert.match(source,/raster_id:rasterId/);
+ assert.doesNotMatch(source,/value=\{prompt\?\.raster_asset_id/);
+ assert.doesNotMatch(source,/raster_id:prompt\?\.raster_asset_id/);
+ assert.match(page,/<ExtractionForm prompts=\{prompts\} aois=\{aois\} rasters=\{assets\}/);
+});
+
 test('mock workflow reports submission outcome without leaving the workspace',()=>{
  const source=readFileSync('components/extraction-form.tsx','utf8');
  const actions=readFileSync('app/actions.ts','utf8');
  assert.match(source,/await createExtractionJob\(data\)/);
+ assert.match(source,/workspace-job-submitted/);
  assert.match(source,/role="status"/);
  assert.match(source,/router\.refresh\(\)/);
  assert.match(actions,/const job=await api<\{id:string\}>/);
  assert.match(actions,/return \{data:job\}/);
+});
+
+test('manual Mock and Worker jobs share completion feedback and map result selection',()=>{
+ const map=readFileSync('components/project-map.tsx','utf8');
+ const worker=readFileSync('components/tile-extraction-form.tsx','utf8');
+ const actions=readFileSync('app/actions.ts','utf8');
+ assert.match(worker,/await createTileJob\(data\)/);
+ assert.match(worker,/workspace-job-submitted/);
+ assert.match(actions,/export async function createTileJob/);
+ assert.match(actions,/return \{data:job\}/);
+ assert.doesNotMatch(actions,/单 Tile 提取任务已加入队列。'[\s\S]*redirect/);
+ assert.match(map,/workspace-job-submitted/);
+ assert.match(map,/assistant\/observe/);
+ assert.match(map,/任务已完成，结果已显示在地图上/);
+ assert.match(map,/workspace-agent-ui/);
 });
 
 test('workflow AOI is rejected before save when it exceeds the target raster',()=>{

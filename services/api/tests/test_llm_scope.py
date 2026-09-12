@@ -67,3 +67,15 @@ def test_status_of_all_jobs_is_not_full_area_extraction():
 def test_explicit_mock_diagnostic_is_not_whole_area_but_full_request_stays_blocked():
     assert llm.requested_scope('生成 Mock 提取测试任务草案')=='single_tile'
     assert llm.requested_scope('用 Mock 测试扫描整个 AOI')=='full_aoi'
+
+
+def test_mock_draft_allows_prompt_from_a_different_raster():
+    target,support,prompt,aoi=map(str,[uuid4(),uuid4(),uuid4(),uuid4()])
+    resources={
+        'rasters':[{'id':target,'filename':'query.tif','status':'ready'},{'id':support,'filename':'support.tif','status':'ready'}],
+        'prompts':[{'id':prompt,'name':'建筑样例','raster_asset_id':support}],
+        'aois':[{'id':aoi,'name':'目标范围'}],'endpoints':[]}
+    intent=llm.Intent(intent='extract',channel='mock',raster_id=target,prompt_id=prompt,aoi_id=aoi)
+    job,labels=llm.build_job(intent,resources,uuid4())
+    assert str(job.raster_asset_id)==target and str(job.prompt_id)==prompt
+    assert labels['影像']=='query.tif' and labels['视觉样例']=='建筑样例'

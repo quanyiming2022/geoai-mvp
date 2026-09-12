@@ -5,6 +5,7 @@ import uuid
 import httpx
 import numpy as np
 import psycopg
+import rasterio
 from rasterio.io import MemoryFile
 from dotenv import dotenv_values
 from migrate import ROOT, connection
@@ -74,7 +75,17 @@ def run():
                 outside={**payload,'geometry':{'type':'Polygon','coordinates':[[[0,0],[1,0],[1,1],[0,0]]]}}
                 assert client.post(path,headers=headers[0],json=outside).status_code==422
                 aoi=client.post(f'/projects/{project_id}/aois',headers=headers[0],json={'name':'E2E AOI','geometry':geometry}).raise_for_status().json()
-                request={'kind':'geoextract','idempotency_key':str(uuid.uuid4()),'raster_asset_id':asset['id'],'prompt_id':prompt['id'],'aoi_id':aoi['id']}
+                # A visual prompt is reusable: the Mock query raster must be a
+                # distinct project asset, just like the real Worker contract.
+                with rasterio.open(fixture,'r+') as ds:ds.update_tags(acquisition_fixture='mock-cross-image-query')
+                target=client.post(f'/projects/{project_id}/rasters',headers={**headers[0],'X-Filename':'query.tif'},content=fixture.read_bytes()).raise_for_status().json()
+                for _ in range(170):
+                    target=next(r for r in client.get(f'/projects/{project_id}/rasters',headers=headers[0]).raise_for_status().json() if r['id']==target['id'])
+                    if target['status'] in ('ready','failed'):break
+                    time.sleep(2)
+                assert target['status']=='ready' and target['id']!=asset['id']
+                objects.extend([target['object_key'],target['cog_object_key'],target['thumbnail_object_key']])
+                request={'kind':'geoextract','idempotency_key':str(uuid.uuid4()),'raster_asset_id':target['id'],'prompt_id':prompt['id'],'aoi_id':aoi['id']}
                 job=client.post(f'/projects/{project_id}/jobs',headers=headers[0],json=request).raise_for_status().json()
                 assert client.post(f'/projects/{project_id}/jobs',headers=headers[1],json={**request,'idempotency_key':str(uuid.uuid4())}).status_code==403
                 assert client.post(f'/projects/{project_id}/jobs',headers=headers[0],json={**request,'prompt_id':str(uuid.uuid4())}).status_code==422
@@ -85,7 +96,10 @@ def run():
                     time.sleep(1)
                 assert job['status']=='succeeded' and job['result']['mock'] and job['result']['result_count']>0
                 results=client.get(f'/projects/{project_id}/results',headers=headers[0]).raise_for_status().json()
-                assert results and all(r['job_id']==job['id'] and r['area_m2']>0 and r['source_metadata']['model_release']=='mock-v1' for r in results)
+                assert results and all(r['job_id']==job['id'] and r['area_m2']>0 and r['source_metadata']['model_release']=='mock-v1' and r['source_metadata']['source_raster']==target['id'] for r in results)
+                with connection() as conn:
+                    snapshot=conn.execute('SELECT execution_snapshot FROM jobs WHERE id=%s',(job['id'],)).fetchone()[0]
+                    assert snapshot['support_raster']['id']==asset['id'] and snapshot['query_raster']['id']==target['id']
                 result=results[0]
                 assert client.get('/jobs/'+job['id']+'/export',headers=headers[2]).status_code==404
                 assert client.post('/results/'+result['id']+'/review',headers=headers[2],json={'action':'accepted'}).status_code==404
@@ -111,7 +125,7 @@ def run():
                 assert 'application/geo+json' in export.headers['content-type'] and 'attachment' in export.headers['content-disposition']
                 collection=export.json()
                 assert collection['type']=='FeatureCollection' and len(collection['features'])==1 and collection['metadata']['crs']=='EPSG:4326'
-                assert collection['features'][0]['properties']['source_metadata']['source_raster']==asset['id']
+                assert collection['features'][0]['properties']['source_metadata']['source_raster']==target['id']
                 with connection() as conn:
                     audit=conn.execute('SELECT action,reviewer FROM review_actions WHERE result_id=%s ORDER BY created_at',(result['id'],)).fetchall()
                     assert [a[0] for a in audit]==['rejected','accepted'] and all(str(a[1])==ids[0] for a in audit)

@@ -8,6 +8,8 @@ from .config import Settings
 from .projects import accessible
 from .spatial import UserSQLRepository
 
+MOCK_INPUTS_SQL="SELECT r.id FROM project_rasters r JOIN visual_prompts p ON p.project_id=r.project_id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND p.deleted_at IS NULL AND a.deleted_at IS NULL AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)"
+
 
 class JobInput(BaseModel):
     model_config = ConfigDict(extra='forbid')
@@ -57,15 +59,15 @@ class JobRepository(UserSQLRepository):
         prior=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))
         if prior:
             if prior[0]['kind']!=data.kind or any(str(prior[0][f])!=str(getattr(data,f)) for f in fields):
-                if data.kind=='geoextract' and not self.execute("SELECT r.id FROM project_rasters r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND p.deleted_at IS NULL AND a.deleted_at IS NULL AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id)):
-                    raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
+                if data.kind=='geoextract' and not self.execute(MOCK_INPUTS_SQL,(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id)):
+                    raise HTTPException(422,'Select a ready target raster, project prompt and AOI inside the target raster')
                 raise HTTPException(409,'Idempotency key conflicts with another request')
             return prior[0]
 
         if data.kind=='geoextract':
-            rows=self.execute("SELECT r.id FROM project_rasters r JOIN visual_prompts p ON p.raster_asset_id=r.id JOIN aois a ON a.project_id=r.project_id WHERE r.id=%s AND p.id=%s AND a.id=%s AND r.project_id=%s AND p.deleted_at IS NULL AND a.deleted_at IS NULL AND r.status='ready' AND extensions.ST_Covers(r.footprint,a.geometry)",(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id))
+            rows=self.execute(MOCK_INPUTS_SQL,(data.raster_asset_id,data.prompt_id,data.aoi_id,project_id))
             if not rows:
-                raise HTTPException(422,'Select a ready raster, its prompt and an AOI inside the raster')
+                raise HTTPException(422,'Select a ready target raster, project prompt and AOI inside the target raster')
         if data.kind=='geoextract_tile':
             fields=('raster_asset_id','prompt_id','aoi_id','model_endpoint_id','model_release_id','endpoint_revision','query_col','query_row','seed')
             existing=self.execute(f'SELECT {self.columns} FROM jobs WHERE project_id=%s AND created_by=%s AND idempotency_key=%s',(project_id,self.user_id,data.idempotency_key))

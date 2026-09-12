@@ -117,10 +117,17 @@ export async function reviewResult(data: FormData) {
 }
 
 export async function createTileJob(data: FormData) {
- const path=projectPath(data);let message='';
- try {let queryCol=Number(value(data,'query_col')),queryRow=Number(value(data,'query_row'));if(value(data,'execution_scope')==='full_aoi'){const coverage=await api<{available:boolean;query_col:number;query_row:number;message:string}>(path+'/assistant/coverage',{method:'POST',body:JSON.stringify({raster_id:value(data,'raster_asset_id'),aoi_id:value(data,'aoi_id')})});if(!coverage.available)message=coverage.message;else{queryCol=coverage.query_col;queryRow=coverage.query_row;}}if(!message)await api(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',aoi_id:value(data,'aoi_id')||undefined,idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:queryCol,query_row:queryRow,seed:Number(value(data,'seed'))})});}
- catch(error){message=errorMessage(error);}
- revalidatePath(path+'/workspace');redirect(path+'/workspace?message='+encodeURIComponent(message||'单 Tile 提取任务已加入队列。'));
+ const path=projectPath(data);
+ try {
+  let queryCol=Number(value(data,'query_col')),queryRow=Number(value(data,'query_row'));
+  if(value(data,'execution_scope')==='full_aoi'){
+   const coverage=await api<{available:boolean;query_col:number;query_row:number;message:string}>(path+'/assistant/coverage',{method:'POST',body:JSON.stringify({raster_id:value(data,'raster_asset_id'),aoi_id:value(data,'aoi_id')})});
+   if(!coverage.available)return {error:coverage.message};
+   queryCol=coverage.query_col;queryRow=coverage.query_row;
+  }
+  const job=await api<{id:string;status:string;progress:number}>(path+'/jobs',{method:'POST',body:JSON.stringify({kind:'geoextract_tile',aoi_id:value(data,'aoi_id')||undefined,idempotency_key:value(data,'idempotency_key'),raster_asset_id:value(data,'raster_asset_id'),prompt_id:value(data,'prompt_id'),model_endpoint_id:value(data,'model_endpoint_id'),model_release_id:value(data,'model_release_id'),endpoint_revision:Number(value(data,'endpoint_revision')),query_col:queryCol,query_row:queryRow,seed:Number(value(data,'seed'))})});
+  revalidatePath(path+'/workspace');return {data:job};
+ } catch(error){return {error:errorMessage(error)};}
 }
 
 export async function previewVisualPrompt(data:FormData):Promise<{image?:string;mask?:string;error?:string}> {
