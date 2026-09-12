@@ -19,8 +19,11 @@ def wait_for(predicate,label):
 def body():return browser('get','text','body')
 def point(x,y):
     browser('mouse','move',str(round(x)),str(round(y)));browser('mouse','down');browser('mouse','up')
+def open_draw():
+    if not js("document.querySelector('form:has(.extraction-steps) details').open"):browser('click','form:has(.extraction-steps) details > summary')
+    click('在目标影像上绘制 AOI')
 def draw(name):
-    click('在目标影像上绘制 AOI');browser('wait','1500')
+    open_draw();browser('wait','1500')
     box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
     if isinstance(box,str):box=json.loads(box)
     x=box['x']+box['width']/2;y=box['y']+box['height']/2
@@ -39,7 +42,7 @@ def run():
     if '关闭工作流' in body():click('关闭工作流')
     browser('select','.extraction-launch select','worker');click('运行提取');click('下一步');click('下一步')
     expected=js("JSON.stringify(['raster_asset_id','prompt_id','model_endpoint_id'].map(n=>document.querySelector('input[name='+n+']').value))")
-    click('在目标影像上绘制 AOI');click('取消')
+    open_draw();click('取消')
     assert '关闭工作流' in body() and '3. 分析范围' in body()
     assert js("document.querySelector('input[name=execution_scope]').value")=='full_aoi'
     draw('工作流完整范围-'+str(time.time_ns()))
@@ -47,21 +50,14 @@ def run():
     assert js("document.querySelector('input[name=execution_scope]').value")=='full_aoi'
     assert expected==js("JSON.stringify(['raster_asset_id','prompt_id','model_endpoint_id'].map(n=>document.querySelector('input[name='+n+']').value))")
     browser('screenshot',str(ROOT/'artifacts/workflow-return-full-1440.png'))
-    click('局部测试');draw('工作流局部范围-'+str(time.time_ns()))
-    assert js("document.querySelector('input[name=execution_scope]').value")=='single_tile'
+    browser('select','form:has(.extraction-steps) select',state['aois']['wide']['id'])
+    wait_for(lambda:'请缩小 AOI' in body(),'large AOI blocked')
+    assert '局部测试' not in browser('snapshot','-i')
+    draw('工作流新小范围-'+str(time.time_ns()))
+    wait_for(lambda:'当前范围可一次完整分析' in body(),'new range automatically covered')
     assert expected==js("JSON.stringify(['raster_asset_id','prompt_id','model_endpoint_id'].map(n=>document.querySelector('input[name='+n+']').value))")
-    click('在地图上选择测试位置');browser('wait','1500')
-    box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
-    if isinstance(box,str):box=json.loads(box)
-    point(box['x']+box['width']/2,box['y']+box['height']/2)
-    wait_for(lambda:'测试位置已确定，可以继续' in body(),'local map selection')
-    browser('set','viewport','1920','1080');browser('screenshot',str(ROOT/'artifacts/workflow-return-local-1920.png'))
+    browser('set','viewport','1920','1080');browser('screenshot',str(ROOT/'artifacts/workflow-return-aoi-1920.png'))
     click('关闭工作流')
-    wait_for(lambda:'蓝色虚线：模型输入窗口' not in body(),'window cleared on close')
-    browser('screenshot',str(ROOT/'artifacts/workflow-closed-1920.png'))
-    click('运行提取');click('下一步');click('下一步');click('局部测试');click('在地图上选择测试位置');click('关闭工作流')
-    wait_for(lambda:'请选择 AOI 内的位置' not in body(),'map picker cancelled on close')
-    browser('wait','800')
-    assert '蓝色虚线：模型输入窗口' not in body()
-    print('PASS: full/local draw-save returns to step 3 and preserves resources/scope; map pick works; close clears window/picker; screenshots 1440/1920')
+    assert not js("!!document.querySelector('.model-window-legend')")
+    print('PASS: draw cancel/save returns to step 3 with resources preserved; large AOI requires smaller AOI; no window overlay; close works')
 if __name__=='__main__':run()

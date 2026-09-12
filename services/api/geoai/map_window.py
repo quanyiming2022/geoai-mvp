@@ -68,8 +68,8 @@ def plan_full_aoi(ds,geometry):
     right,bottom=map(snap,(max(p[0] for p in pixels),max(p[1] for p in pixels)))
     width,height=right-left,bottom-top
     plan={'requested_scope':'full_aoi','execution_mode':'single_tile_full_aoi','available':False,'aoi_bbox_width_px':width,'aoi_bbox_height_px':height,'model_input_width':512,'model_input_height':512}
+    if left<0 or top<0 or right>ds.width or bottom>ds.height:return {**plan,'reason':'outside_raster','overlaps_raster':right>0 and bottom>0 and left<ds.width and top<ds.height}
     if width>512 or height>512:return {**plan,'execution_mode':'multi_tile_full_aoi','reason':'multi_tile_required'}
-    if left<0 or top<0 or right>ds.width or bottom>ds.height:return {**plan,'reason':'outside_raster'}
     if ds.width<512 or ds.height<512 or ds.count<3:return {**plan,'reason':'source_too_small'}
     col_min=max(0,math.ceil(right-512));col_max=min(ds.width-512,math.floor(left))
     row_min=max(0,math.ceil(bottom-512));row_max=min(ds.height-512,math.floor(top))

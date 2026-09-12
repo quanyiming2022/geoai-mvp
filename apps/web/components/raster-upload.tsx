@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import {RasterLibraryPicker} from './raster-library';
 import {manageAsset} from '../app/asset-actions';
 import { useRouter } from 'next/navigation';
-export default function RasterUpload({ projectId }: { projectId: string }) {
+export default function RasterUpload({ projectId,onAdded }: { projectId: string;onAdded?:(ids:string[])=>void }) {
   const router = useRouter();
   const [duplicate,setDuplicate]=useState<{id:string;name:string}|null>(null);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState('');
@@ -19,12 +19,12 @@ export default function RasterUpload({ projectId }: { projectId: string }) {
     xhr.upload.onprogress = event => { if (event.lengthComputable) { setProgress(Math.round(event.loaded / event.total * 100)); if (event.loaded === event.total) setMessage('文件已发送，正在校验与保存…'); } };
     xhr.onload = () => {
       setBusy(false); active.current = null;
-      if (xhr.status === 201) { setMessage('影像上传成功。'); form.reset(); router.refresh(); }
+      if (xhr.status === 201) { const asset=JSON.parse(xhr.responseText);onAdded?.([asset.id]);setMessage('影像上传成功。'); form.reset(); router.refresh(); }
       else if(xhr.status===409){try{const detail=JSON.parse(xhr.responseText).detail;if(detail?.code==='RASTER_EXISTS'){setDuplicate({id:detail.asset_id,name:detail.name});setMessage('该影像已存在于影像库。');}else setMessage('影像登记冲突，请刷新后重试。');}catch{setMessage('影像登记冲突，请重试。');}}
       else setMessage(xhr.status === 413 ? '文件超过服务器配置的大小限制。' : xhr.status === 422 ? '请选择有效且包含 CRS 的 GeoTIFF。' : xhr.status === 403 ? '你没有上传权限。' : xhr.status === 401 ? '请重新登录后重试。' : '上传失败，请检查服务后重试。');
     };
     xhr.onerror = () => { setBusy(false); active.current = null; setMessage('网络中断，请重试。'); };
     xhr.send(file);
   }
-  return <><form onSubmit={upload} className="upload-form"><label>上传 GeoTIFF<input name="raster" type="file" accept=".tif,.tiff,image/tiff" required disabled={busy}/></label><button disabled={busy}>{busy ? '上传处理中…' : '上传影像'}</button>{busy && <progress max={100} value={progress} aria-label="上传进度"/>}{message && <p role="status">{message}</p>}</form><RasterLibraryPicker projectId={projectId}/>{duplicate&&<div role="alert"><p>“{duplicate.name}”已存在，是否直接添加到当前项目？</p><button className="secondary" disabled={busy} onClick={async()=>{setBusy(true);const result=await manageAsset(duplicate.id,'link','',projectId);setBusy(false);if(result.error)setMessage(result.error);else{setDuplicate(null);setMessage('已复用已有影像，无需重复处理。');router.refresh();}}}>添加已有影像</button><button className="secondary" onClick={()=>setDuplicate(null)}>取消</button></div>}</>;
+  return <><form onSubmit={upload} className="upload-form"><label>上传 GeoTIFF<input name="raster" type="file" accept=".tif,.tiff,image/tiff" required disabled={busy}/></label><button disabled={busy}>{busy ? '上传处理中…' : '上传影像'}</button>{busy && <progress max={100} value={progress} aria-label="上传进度"/>}{message && <p role="status">{message}</p>}</form><RasterLibraryPicker projectId={projectId} onAdded={onAdded}/>{duplicate&&<div role="alert"><p>“{duplicate.name}”已存在，是否直接添加到当前项目？</p><button className="secondary" disabled={busy} onClick={async()=>{setBusy(true);const result=await manageAsset(duplicate.id,'link','',projectId);setBusy(false);if(result.error)setMessage(result.error);else{onAdded?.([duplicate.id]);setDuplicate(null);setMessage('已复用已有影像，无需重复处理。');router.refresh();}}}>添加已有影像</button><button className="secondary" onClick={()=>setDuplicate(null)}>取消</button></div>}</>;
 }

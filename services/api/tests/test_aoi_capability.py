@@ -32,3 +32,10 @@ def test_small_aoi_outside_source_cannot_claim_complete_coverage():
     with MemoryFile() as mem,mem.open(driver='GTiff',width=1024,height=1024,count=3,dtype='uint8',crs='EPSG:4326',transform=Affine(.001,0,0,0,-.001,1)) as ds:
         plan=plan_full_aoi(ds,{'type':'Polygon','coordinates':[[[-.01,.9],[.02,.9],[.02,.8],[-.01,.8],[-.01,.9]]]})
     assert not plan['available'] and plan['reason']=='outside_raster'
+
+
+def test_large_disjoint_aoi_is_not_misclassified_as_tiling_requirement():
+    with MemoryFile() as mem,mem.open(driver='GTiff',width=1024,height=1024,count=3,dtype='uint8',crs='EPSG:4326',transform=Affine(.001,0,0,0,-.001,1)) as ds:
+        plan=plan_full_aoi(ds,{'type':'Polygon','coordinates':[[[2,0],[3,0],[3,-1],[2,-1],[2,0]]]})
+    assert not plan['available'] and plan['reason']=='outside_raster'
+    assert plan['overlaps_raster'] is False

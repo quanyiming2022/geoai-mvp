@@ -80,8 +80,23 @@ def ui_action(action,resource,kind):
     return {'action':action,'resource_kind':kind,'id':str(resource['id']),'geometry':resource.get('geometry'),'job_id':str(resource['job_id']) if resource.get('job_id') else None}
 
 
+def resource_choices(items):
+    choices=[]
+    for item in items:
+        parts=[]
+        if item.get('area_m2') is not None:parts.append(f"{item['area_m2']:.1f} m²")
+        if item.get('width') and item.get('height'):parts.append(f"{item['width']} × {item['height']}")
+        if item.get('class_label'):parts.append(item['class_label'])
+        if item.get('created_at'):parts.append(str(item['created_at']))
+        choice={'id':str(item['id']),'name':item.get('name',item.get('filename','对象'))}
+        if parts:choice['description']=' · '.join(parts)
+        choices.append(choice)
+    return choices
+
+
 def clarify(error,context):
-    return {'kind':'clarification','message':error.message,'context_update':context,'field':error.field,'choices':[{'id':str(x['id']),'name':x.get('name',x.get('filename','对象'))} for x in error.candidates], 'suggested_actions':['check_compute'] if error.field=='endpoint_id' and not error.candidates else ['create_prompt'] if error.field=='prompt_id' and not error.candidates else ['create_aoi'] if error.field=='aoi_id' and not error.candidates else []}
+    action={'raster_id':'add_raster','prompt_id':'create_prompt','aoi_id':'create_aoi','endpoint_id':'check_compute'}.get(error.field)
+    return {'kind':'clarification','message':error.message,'context_update':context,'field':error.field,'choices':resource_choices(error.candidates),'suggested_actions':[action] if action else []}
 
 def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_override=None):
     details,resources,recent,result,unified=workspace(project_id,current,data.workspace_context)
@@ -117,6 +132,11 @@ def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_overrid
             action=goal.ui_action if goal.ui_action!='none' else 'zoom_to_object'
             if action in ('toggle_layer','set_layer_visibility') and kind!='raster':return {**base,'kind':'explanation','message':'当前助手仅支持切换影像图层；其他图层请使用图层面板。'}
             return {**base,'kind':'ui','message':'已更新地图视图。','ui_tool':{**ui_action(action,selected,kind),'visible':goal.visible}}
+        # Product inference always analyzes a saved AOI; legacy pixel APIs remain diagnostic.
+        if context['channel']=='worker':
+            goal=goal.model_copy(update={'requested_execution_scope':'full_aoi'})
+            base['goal']=goal.model_dump()
+            context.update(query_col=None,query_row=None,window_source=None,window_aoi_id=None)
         raster=resolve_resource([r for r in resources['rasters'] if r['status']=='ready'],goal.raster_name,context.get('raster_id'),'raster_id')
         if context.get('raster_id')!=str(raster['id']):context['query_col']=None;context['query_row']=None
         context['raster_id']=str(raster['id'])
@@ -127,8 +147,22 @@ def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_overrid
         coverage=None
         if goal.requested_execution_scope=='full_aoi':
             coverage=llm.resolve_full_aoi(project_id,current,raster['id'],aoi['id']) if context['channel']=='worker' else {'available':False,'reason':'mock_only','execution_mode':'unavailable'}
+        validation=coverage
+        if validation and validation.get('reason')=='outside_raster':
+            covering=[]
+            for candidate in resources['rasters']:
+                if candidate['status']!='ready' or str(candidate['id'])==str(raster['id']):continue
+                try:alternative=llm.resolve_full_aoi(project_id,current,candidate['id'],aoi['id'])
+                except HTTPException:continue
+                if alternative.get('available'):covering.append(candidate)
+            if covering:
+                return {**base,**clarify(ResolutionError('raster_id',f"范围“{aoi['name']}”不在目标影像“{raster['filename']}”内。以下影像可以完整分析该范围，请选择目标影像，无需重画 AOI。",covering),context)}
+        if validation and validation.get('reason') in ('outside_raster','source_too_small'):
+            field,group,selected=('aoi_id','aois',aoi) if validation['reason']=='outside_raster' else ('raster_id','rasters',raster)
+            candidates=[item for item in resources[group] if str(item['id'])!=str(selected['id'])]
+            return {**base,'kind':'clarification','field':field,'message':llm.coverage_message(validation),'choices':resource_choices(candidates),'suggested_actions':['create_aoi'] if field=='aoi_id' else ['add_raster']}
         if not capability_check(goal,coverage):
-            return {**base,'kind':'capability_unavailable','execution_mode':coverage['execution_mode'],'code':'CAPABILITY_NOT_AVAILABLE','message':f"已识别“{prompt['name']}”和范围“{aoi['name'] if aoi else '当前范围'}”。"+llm.coverage_message(coverage),'suggested_actions':['select_window'],'labels':{'视觉样例':prompt['name'],'范围':aoi['name'] if aoi else '当前范围','执行范围':'整个 AOI','能力状态':'当前不可用'}}
+            return {**base,'kind':'capability_unavailable','execution_mode':coverage['execution_mode'],'code':'CAPABILITY_NOT_AVAILABLE','message':f"已识别“{prompt['name']}”和范围“{aoi['name'] if aoi else '当前范围'}”。"+llm.coverage_message(coverage),'field':'aoi_id','choices':resource_choices([item for item in resources['aois'] if str(item['id'])!=str(aoi['id'])]),'suggested_actions':['create_aoi'],'labels':{'视觉样例':prompt['name'],'范围':aoi['name'] if aoi else '当前范围','执行范围':'整个 AOI','能力状态':'当前不可用'}}
         if coverage and coverage['available']:
             context.update(query_col=coverage['query_col'],query_row=coverage['query_row'],window_aoi_id=str(aoi['id']),window_source='automatic')
         if details['my_role'] not in ('owner','editor'):return {**base,'kind':'explanation','message':'当前角色可以查看项目，但不能运行模型任务。'}
@@ -137,15 +171,12 @@ def run_agent(project_id:UUID,data:AgentRequest,current:CurrentUser,goal_overrid
             if not aoi:aoi=resolve_resource(resources['aois'],None,context.get('aoi_id'),'aoi_id');context['aoi_id']=str(aoi['id'])
         else:
             endpoint=select_endpoint(resources['endpoints'],context.get('endpoint_id'));context['endpoint_id']=str(endpoint['id'])
-        if not coverage and context['channel']=='worker' and (context.get('window_source')=='automatic' or context.get('query_col') is None or context.get('query_row') is None or (context.get('aoi_id') and context.get('window_aoi_id')!=context.get('aoi_id')) or (goal_override is None and re.search(r'再测|旁边|另一个',data.text))):
-            context['query_col']=None;context['query_row']=None
-            return {**base,'kind':'select_window','message':'请选择范围内的一个位置进行测试。已保留当前影像、样例和研究模型。','suggested_actions':['select_window']}
         intent=llm.Intent(intent='extract',execution_scope=goal.requested_execution_scope,**{k:context.get(k) for k in ('channel','raster_id','prompt_id','aoi_id','endpoint_id','query_col','query_row')})
         token=uuid4();job,labels=llm.build_job(intent,resources,token,coverage)
         record={'project_id':str(project_id),'user_id':current.user['id'],'job':job.model_dump(mode='json'),'labels':labels,'execution_scope':intent.execution_scope,'coverage':coverage}
         with llm.cache() as cache:cache.set(f'geoai:llm:draft:{token}',json.dumps(record),ex=1800)
         research=endpoint and endpoint['usage_policy']=='research_only'
-        return {**base,'kind':'draft','execution_mode':'single_tile_full_aoi' if coverage else 'single_tile_test','query_window':coverage,'draft_id':str(token),'message':'当前范围可一次完整分析，模型窗口已自动定位。请核对后开始。' if coverage else '已准备好局部测试，请核对计划后开始。','labels':{'影像':raster['filename'],'视觉样例':prompt['name'],'AOI':aoi['name'] if aoi else '未限定（地图测试位置）','模型':(endpoint['model_name']+' · 研究模型' if research else endpoint['model_name']) if endpoint else 'Mock · 合成预览','执行范围':'整个 AOI · 一次完整分析' if coverage else '范围内的小区域测试' if endpoint else '有限合成预览','能力状态':'可用'},'plan':[f"使用“{prompt['name']}”定义目标",f"读取“{raster['filename']}”的地图选定窗口",'运行研究模型并转换为 GIS 图斑' if endpoint else '运行已有 Mock 流程','在当前工作区显示候选结果并人工审核'],'quality_note':'当前 SkySense++ 建筑任务处于研究验证阶段，跨区域迁移较弱，农田存在明显误检。' if endpoint and 'skysense' in endpoint['model_name'].lower() else None}
+        return {**base,'kind':'draft','execution_mode':'single_tile_full_aoi' if coverage else 'single_tile_test','query_window':coverage,'draft_id':str(token),'message':'当前范围可一次完整分析，模型窗口已自动定位。请核对后开始。' if coverage else '已准备好合成预览，请核对计划后开始。','labels':{'影像':raster['filename'],'视觉样例':prompt['name'],'AOI':aoi['name'] if aoi else '未限定（地图测试位置）','模型':(endpoint['model_name']+' · 研究模型' if research else endpoint['model_name']) if endpoint else 'Mock · 合成预览','执行范围':'整个 AOI · 一次完整分析' if coverage else '范围内的小区域测试' if endpoint else '有限合成预览','能力状态':'可用'},'plan':[f"使用“{prompt['name']}”定义目标",f"分析“{raster['filename']}”中的已选 AOI",'运行研究模型并转换为 GIS 图斑' if endpoint else '运行已有 Mock 流程','在当前工作区显示候选结果并人工审核'],'quality_note':'当前 SkySense++ 建筑任务处于研究验证阶段，跨区域迁移较弱，农田存在明显误检。' if endpoint and 'skysense' in endpoint['model_name'].lower() else None}
     except ResolutionError as error:return {**base,**clarify(error,context)}
 
 
@@ -158,14 +189,14 @@ def run_conversation(project_id:UUID,data:AgentRequest,current:CurrentUser):
         if record['project_id']!=str(project_id) or record['user_id']!=current.user['id']:raise HTTPException(404,'对话不存在。')
         context=record['context'];incoming=data.workspace_context.model_dump(mode='json')
         field=record.get('field')
-        if field in ('aoi_id','prompt_id','raster_id','endpoint_id'):context[field]=incoming.get(field)
+        if field in ('aoi_id','prompt_id','raster_id','endpoint_id'):
+            if field in ('aoi_id','raster_id') and context.get(field)!=incoming.get(field):
+                context.update(query_col=None,query_row=None,window_aoi_id=None,window_source=None)
+            context[field]=incoming.get(field)
         goal=AgentGoal.model_validate(record['goal']);text=record['text']
-        if data.accept_single_tile:
-            if record['kind'] not in ('capability_unavailable','select_window'):raise HTTPException(422,'请先确认当前操作。')
-            goal=goal.model_copy(update={'goal_type':'test_model_here','requested_execution_scope':'single_tile','scope':'selected_location'})
-            text='用这个样例测试这里'
-        if record['kind']=='select_window' or data.accept_single_tile:
-            context.update(query_col=incoming.get('query_col'),query_row=incoming.get('query_row'),window_aoi_id=context.get('aoi_id'),window_source='map')
+        hint={'aoi_id':'aoi_name','prompt_id':'prompt_name','raster_id':'raster_name'}.get(field)
+        if hint:goal=goal.model_copy(update={hint:None})
+        # Old map-selection continuations are re-evaluated under AOI-only rules.
         data=data.model_copy(update={'workspace_context':ViewContext.model_validate(context),'text':text})
     response=run_agent(project_id,data,current,goal)
     state={'clarification':'NEED_CLARIFICATION','select_window':'NEED_CLARIFICATION','draft':'NEED_CONFIRMATION','cancel_confirmation':'NEED_CONFIRMATION','capability_unavailable':'BLOCKED','explanation':'BLOCKED','ui':'COMPLETED','resources':'NEED_CLARIFICATION','status':'COMPLETED'}.get(response['kind'],'READY')

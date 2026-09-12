@@ -71,14 +71,20 @@ def test_ambiguous_aoi_requires_question_before_capability_rejection(monkeypatch
     assert answer['kind']=='clarification' and answer['field']=='aoi_id'
     assert len(answer['choices'])==2 and not any('llm:draft:' in key for key in env[-1])
 
-def test_missing_map_position_and_offline_prevent_submission(monkeypatch,env):
+def valid_coverage(monkeypatch,env):
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda p,u,r,a:{'available':True,'execution_mode':'single_tile_full_aoi','aoi_id':str(a),'raster_id':str(r),'query_col':20,'query_row':30,'aoi_revision':1})
+
+
+def test_automatic_aoi_and_offline_prevent_submission(monkeypatch,env):
+    valid_coverage(monkeypatch,env)
     goal=AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile')
-    assert run(monkeypatch,env,goal)['kind']=='select_window'
+    assert run(monkeypatch,env,goal)['kind']=='draft'
     env[1]['endpoints'][0]['health_status']='offline'
     answer=run(monkeypatch,env,goal)
-    assert answer['kind']=='clarification' and '不可用' in answer['message'] and not any('llm:draft:' in key for key in env[-1])
+    assert answer['kind']=='clarification' and '不可用' in answer['message']
 
 def test_viewer_cannot_prepare_inference_and_owner_needs_confirmation(monkeypatch,env):
+    valid_coverage(monkeypatch,env)
     goal=AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile')
     env[2]['my_role']='viewer'
     assert run(monkeypatch,env,goal)['kind']=='explanation' and not any('llm:draft:' in key for key in env[-1])
@@ -129,7 +135,7 @@ def test_map_continuation_freezes_resources_and_requires_explicit_scope_change(m
     assert blocked['code']=='CAPABILITY_NOT_AVAILABLE'
     request=request.model_copy(update={'accept_single_tile':True})
     answer=agent.agent(env[0]['project'],request,SimpleNamespace(user={'id':env[0]['user']}))
-    assert answer['kind']=='draft' and answer['context_update']['raster_id']==env[0]['raster']
+    assert answer['kind']=='capability_unavailable' and answer['context_update']['raster_id']==env[0]['raster']
 
 
 def test_confirmed_cancel_delegates_to_existing_authorized_job_api(monkeypatch,env):
@@ -157,13 +163,13 @@ def test_small_full_aoi_auto_window_requires_confirmation_not_map(monkeypatch,en
     import json
     draft=json.loads(env[-1]['geoai:llm:draft:'+answer['draft_id']])
     assert draft['execution_scope']=='full_aoi' and draft['job']['query_col']==20 and draft['job']['aoi_id']==ids['aoi']
-    # Explicit local test does not inherit the automatic full-range position.
-    assert run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'))['kind']=='select_window'
+    # Test phrasing also uses automatic AOI coverage, never map selection.
+    assert run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'))['kind']=='draft'
 
 
 def test_auto_full_aoi_window_is_not_an_explicit_test_location(monkeypatch,env):
     answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),raster_id=env[0]['raster'],query_col=0,query_row=0,window_source='automatic')
-    assert answer['kind']=='select_window'
+    assert answer['kind']=='capability_unavailable'
 
 
 def test_full_aoi_confirmation_rechecks_revision(monkeypatch,env):
@@ -200,9 +206,105 @@ def test_missing_aoi_offers_creation_and_pending_goal(monkeypatch,env):
 
 
 def test_worker_draft_accepts_prompt_from_another_raster(monkeypatch,env):
+    valid_coverage(monkeypatch,env)
     other=str(uuid4())
     env[1]['rasters'].append({**env[1]['rasters'][0],'id':other,'filename':'Query B'})
     response=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),raster_id=other,prompt_id=env[0]['prompt'],query_col=0,query_row=0,window_source='map')
     assert response['kind']=='draft'
     assert response['labels']['影像']=='Query B'
     assert response['context_update']['prompt_id']==env[0]['prompt']
+
+
+def test_outside_aoi_repairs_resource_without_offering_dead_map_action(monkeypatch,env):
+    ids=env[0]
+    other={'id':str(uuid4()),'name':'目标影像范围'}
+    env[1]['aois'].append(other)
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda p,u,r,a: {'available':False,'execution_mode':'unavailable','reason':'outside_raster'} if str(a)==ids['aoi'] else {'available':True,'execution_mode':'single_tile_full_aoi','query_col':0,'query_row':0,'aoi_revision':1,'aoi_id':str(a),'raster_id':str(r)})
+    first=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi',aoi_name='12aoi'),text='提取12aoi中的所有建筑',aoi_id=ids['aoi'])
+    assert first['kind']=='clarification'
+    assert first['field']=='aoi_id'
+    assert first['choices']==[other]
+    assert first['suggested_actions']==['create_aoi']
+    assert not any('llm:draft:' in key for key in env[-1])
+    ctx={**first['context_update'],'aoi_id':other['id']}
+    resumed=agent.agent(ids['project'],agent.AgentRequest(text=other['name'],continuation_id=first['continuation_id'],workspace_context=ctx),SimpleNamespace(user={'id':ids['user']}))
+    assert resumed['kind']=='draft'
+    assert resumed['execution_mode']=='single_tile_full_aoi'
+    assert resumed['context_update']['prompt_id']==ids['prompt']
+
+
+def test_too_small_raster_does_not_offer_impossible_map_pick(monkeypatch,env):
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:{'available':False,'execution_mode':'unavailable','reason':'source_too_small'})
+    answer=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'))
+    assert answer['kind']=='clarification' and answer['field']=='raster_id'
+    assert 'select_window' not in answer.get('suggested_actions',[])
+
+
+def test_disjoint_aoi_local_test_requires_repair_before_map(monkeypatch,env):
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:{'available':False,'execution_mode':'single_tile_full_aoi','reason':'outside_raster','overlaps_raster':False})
+    answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),aoi_id=env[0]['aoi'])
+    assert answer['kind']=='clarification' and answer['field']=='aoi_id'
+    assert answer['suggested_actions']==['create_aoi']
+    assert not any('llm:draft:' in key for key in env[-1])
+
+
+def test_selected_small_aoi_auto_covers_even_when_user_says_test(monkeypatch,env):
+    ids=env[0]
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',lambda *args:{'available':True,'execution_mode':'single_tile_full_aoi','aoi_id':ids['aoi'],'raster_id':ids['raster'],'query_col':10,'query_row':20,'aoi_revision':1})
+    answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),aoi_id=ids['aoi'])
+    assert answer['kind']=='draft' and answer['execution_mode']=='single_tile_full_aoi'
+    assert 'select_window' not in answer.get('suggested_actions',[])
+
+
+@pytest.mark.parametrize('field,action',[('aoi_id','create_aoi'),('prompt_id','create_prompt'),('raster_id','add_raster')])
+def test_ambiguous_resources_offer_creation_with_distinguishing_metadata(field,action):
+    candidates=[{'id':'1','name':'同名','created_at':'2026-09-12T01:00:00Z'},{'id':'2','name':'同名','created_at':'2026-09-12T02:00:00Z'}]
+    answer=agent.clarify(ResolutionError(field,'请选择',candidates),{})
+    assert action in answer['suggested_actions']
+    assert answer['choices'][0]['description']!=answer['choices'][1]['description']
+
+
+@pytest.mark.parametrize('field,group,label,action',[('raster_id','rasters','新影像','add_raster'),('prompt_id','prompts','新样例','create_prompt')])
+def test_new_resource_resumes_pending_task_without_reparsing(monkeypatch,env,field,group,label,action):
+    ids=env[0]
+    existing=env[1][group][0]
+    env[1][group].append({**existing,'id':str(uuid4())})
+    first=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),text='提取整个范围')
+    assert first['field']==field and action in first['suggested_actions']
+    new={**existing,'id':str(uuid4())}
+    new['filename' if group=='rasters' else 'name']=label
+    env[1][group].append(new)
+    monkeypatch.setattr(agent,'parse_goal',lambda *args:pytest.fail('creation must resume original goal'))
+    answer=agent.agent(ids['project'],agent.AgentRequest(text='已创建',continuation_id=first['continuation_id'],workspace_context={**first['context_update'],field:new['id']}),SimpleNamespace(user={'id':ids['user']}))
+    assert answer['context_update'][field]==new['id']
+    assert answer['kind']=='capability_unavailable'
+    assert answer['goal']['requested_execution_scope']=='full_aoi'
+
+
+def test_wrong_target_offers_covering_raster_without_redrawing_aoi(monkeypatch,env):
+    ids=env[0];other={**env[1]['rasters'][0],'id':str(uuid4()),'filename':'Covering raster'};env[1]['rasters'].append(other)
+    def coverage(p,u,r,a):
+        if str(r)==ids['raster']:return {'available':False,'reason':'outside_raster','execution_mode':'single_tile_full_aoi','overlaps_raster':False}
+        return {'available':True,'execution_mode':'single_tile_full_aoi','raster_id':str(r),'aoi_id':str(a),'query_col':0,'query_row':0,'aoi_revision':1}
+    monkeypatch.setattr(agent.llm,'resolve_full_aoi',coverage)
+    first=run(monkeypatch,env,AgentGoal(goal_type='extract_similar',requested_execution_scope='full_aoi'),text='分析整个AOI',raster_id=ids['raster'],aoi_id=ids['aoi'])
+    assert first['field']=='raster_id' and first['choices'][0]['id']==other['id']
+    answer=agent.agent(ids['project'],agent.AgentRequest(text='改用覆盖影像',continuation_id=first['continuation_id'],workspace_context={**first['context_update'],'raster_id':other['id']}),SimpleNamespace(user={'id':ids['user']}))
+    assert answer['kind']=='draft' and answer['context_update']['aoi_id']==ids['aoi']
+    assert answer['execution_mode']=='single_tile_full_aoi'
+
+
+def test_product_test_request_requires_aoi_and_offers_creation(monkeypatch,env):
+    env[1]['aois']=[]
+    answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'))
+    assert answer['kind']=='clarification' and answer['field']=='aoi_id'
+    assert 'create_aoi' in answer['suggested_actions']
+    assert 'select_window' not in answer['suggested_actions']
+
+
+def test_large_aoi_never_offers_map_test_even_with_old_coordinates(monkeypatch,env):
+    answer=run(monkeypatch,env,AgentGoal(goal_type='test_model_here',requested_execution_scope='single_tile'),query_col=0,query_row=0,window_source='map',aoi_id=env[0]['aoi'])
+    assert answer['kind']=='capability_unavailable'
+    assert answer['field']=='aoi_id' and 'create_aoi' in answer['suggested_actions']
+    assert 'select_window' not in answer['suggested_actions']
+    assert not any('llm:draft:' in key for key in env[-1])

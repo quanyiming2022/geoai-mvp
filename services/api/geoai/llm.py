@@ -127,20 +127,20 @@ class HttpLLMProvider:
 def catalog(project_id,current):
     accessible(project_id,current)
     repo=PostgrestRepository(current.token)
-    assets=repo.request('GET','project_rasters',params={'project_id':f'eq.{project_id}','select':'id,filename,status,width,height,bands','limit':'101'})
-    prompts=repo.request('GET','visual_prompts',params={'project_id':f'eq.{project_id}','select':'id,name,raster_asset_id','deleted_at':'is.null','limit':'101'})
-    aois=repo.request('GET','aois',params={'project_id':f'eq.{project_id}','select':'id,name','deleted_at':'is.null','limit':'101'})
+    assets=repo.request('GET','project_rasters',params={'project_id':f'eq.{project_id}','select':'id,filename,status,width,height,bands,created_at','limit':'101'})
+    prompts=repo.request('GET','visual_prompts',params={'project_id':f'eq.{project_id}','select':'id,name,raster_asset_id,class_label,created_at','deleted_at':'is.null','limit':'101'})
+    aois=repo.request('GET','aois',params={'project_id':f'eq.{project_id}','select':'id,name,created_at','deleted_at':'is.null','limit':'101'})
     endpoints=available_endpoints(current)
     if any(len(a)>100 for a in (assets,prompts,aois,endpoints)):
         raise HTTPException(422,'Too many resources for this assistant version; use manual selection')
     return {'rasters':assets,'prompts':prompts,'aois':aois,'endpoints':endpoints}
 
-CAPABILITY_MESSAGE='当前范围超过单个模型窗口，需要分块扫描。大范围自动扫描尚未开放，可以先选择一个区域进行测试。'
+CAPABILITY_MESSAGE='当前范围超过单个模型窗口，需要分块扫描。大范围自动扫描尚未开放，请缩小 AOI，或绘制一个新的小范围。'
 
 from .map_window import resolve_full_aoi
 
 def coverage_message(coverage):
-    return {'outside_raster':'当前 AOI 超出所选影像的可读范围，无法完整分析。请调整范围或选择覆盖它的影像。','source_too_small':'所选影像不能提供完整模型输入，请选择更大的 RGB 影像。','pixel_alignment':'当前范围跨越了单个模型窗口的像素边界，无法由一个完整窗口覆盖。可以先选择一个区域进行测试。','mock_only':'Mock 仅用于有限合成预览，不能作为整个 AOI 的真实分析。'}.get(coverage.get('reason'),CAPABILITY_MESSAGE)
+    return {'outside_raster':'当前 AOI 超出所选影像的可读范围，无法完整分析。请调整范围或选择覆盖它的影像。','source_too_small':'所选影像不能提供完整模型输入，请选择更大的 RGB 影像。','pixel_alignment':'当前范围跨越了单个模型窗口的像素边界，无法由一个完整窗口覆盖。请缩小 AOI，或绘制一个新的小范围。','mock_only':'Mock 仅用于有限合成预览，不能作为整个 AOI 的真实分析。'}.get(coverage.get('reason'),CAPABILITY_MESSAGE)
 
 def prepare_execution(intent,project_id,current):
     if intent.execution_scope!='full_aoi':return intent,None
