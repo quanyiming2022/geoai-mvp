@@ -44,6 +44,26 @@ def verify_outside_aoi_is_not_saved():
     click('取消')
 
 
+def verify_large_in_bounds_aoi_is_not_saved():
+    click('＋ 在地图上绘制 AOI')
+    browser('wait','800')
+    box=js("JSON.stringify(document.querySelector('.maplibregl-canvas').getBoundingClientRect().toJSON())")
+    if isinstance(box,str):box=json.loads(box)
+    # Workflow creation fits the 1280 px source into the map. This rectangle
+    # remains inside the raster while spanning well over 512 source pixels.
+    x=box['x']+box['width']/2;y=box['y']+box['height']/2
+    point(x-box['width']*.28,y-box['height']*.08);point(x+box['width']*.28,y+box['height']*.08)
+    name='MUST-NOT-PERSIST-'+str(time.time_ns())
+    browser('find','role','textbox','fill','--name','名称','--exact',name)
+    click('保存 AOI')
+    wait_for(lambda:'超过单次 512 × 512 模型窗口' in body(),'large AOI capability preflight')
+    assert '本次 AOI 未保存，请重新绘制' in body()
+    assert not js(f"[...document.querySelectorAll('.spatial-resource-item .resource-row')].some(node=>node.textContent?.includes({json.dumps(name)}))")
+    click('重新绘制')
+    assert name not in js("[...document.querySelectorAll('.spatial-resource-item .resource-row')].map(node=>node.textContent).join('|')")
+    click('取消')
+
+
 def run():
     state=json.loads((ROOT/'artifacts/small-aoi-state.json').read_text())
     credentials=dotenv_values('/tmp/geoai-small-aoi-browser.env');email=credentials['EMAIL']
@@ -54,6 +74,7 @@ def run():
     click('登录');wait_for(lambda:'我的项目' in body(),'isolated owner login')
     browser('open',url);wait_for(lambda:js("!!document.querySelector('.agent-launcher')"),'workspace ready')
     if '关闭工作流' in body():click('关闭工作流')
+    assert '尚未选择对象' in body(), 'Workspace must not restore a transient raster selection'
 
     # Old active-session payloads from earlier releases must not be restored.
     storage=f'geoai-agent:{email}:{state["project"]}'
@@ -70,12 +91,14 @@ def run():
     click('收起助手')
     browser('select','.extraction-launch select','mock');click('运行提取')
     assert '＋ 在地图上绘制 AOI' in body()
+    assert js("document.querySelector('form:has(h3) select[name=aoi_id]').value")==''
     new_name='Mock 新范围-'+str(time.time_ns())
     draw_small_aoi(new_name)
     wait_for(lambda:js("document.querySelector('form:has(h3) select[name=aoi_id]').selectedOptions[0]?.textContent")==new_name,'Mock AOI selection survives refresh')
     click('运行 Mock GeoExtract')
     wait_for(lambda:'Mock GeoExtract 已加入队列，可在底部任务栏查看进度。' in body(),'Mock submission feedback')
     verify_outside_aoi_is_not_saved()
+    verify_large_in_bounds_aoi_is_not_saved()
     click('关闭工作流');open_assistant()
     assert '从一个目标开始' in body() and '刚才任务怎么样' not in body()
 
@@ -89,7 +112,7 @@ def run():
     js("window.confirm=()=>true")
     browser('find','role','button','click','--name','删除历史对话“刚才任务怎么样”','--exact')
     wait_for(lambda:'历史对话 · 0' in body(),'archived conversation deletion')
-    print('PASS: one minimize control, no stale session restore, Mock-created AOI is selected, Mock submission is acknowledged, outside AOI is blocked before save, archived history can be deleted, re-entry starts fresh')
+    print('PASS: one minimize control, no stale session or resource selection restore, AOI defaults empty, Mock-created AOI is selected, Mock submission is acknowledged, outside and oversized AOIs are blocked before save, archived history can be deleted, re-entry starts fresh')
 
 
 if __name__=='__main__':run()

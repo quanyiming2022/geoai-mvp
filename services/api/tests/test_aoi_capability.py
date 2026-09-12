@@ -39,3 +39,11 @@ def test_large_disjoint_aoi_is_not_misclassified_as_tiling_requirement():
         plan=plan_full_aoi(ds,{'type':'Polygon','coordinates':[[[2,0],[3,0],[3,-1],[2,-1],[2,0]]]})
     assert not plan['available'] and plan['reason']=='outside_raster'
     assert plan['overlaps_raster'] is False
+
+
+def test_large_inside_raster_aoi_requires_tiling_before_persistence():
+    """An in-bounds geometry can still exceed the frozen 512 px capability."""
+    with MemoryFile() as mem,mem.open(driver='GTiff',width=1280,height=1280,count=3,dtype='uint8',crs='EPSG:4326',transform=Affine(.001,0,0,0,-.001,1)) as ds:
+        plan=plan_full_aoi(ds,{'type':'Polygon','coordinates':[[[.1,.9],[.8,.9],[.8,.7],[.1,.7],[.1,.9]]]})
+    assert not plan['available'] and plan['reason']=='multi_tile_required'
+    assert plan['aoi_bbox_width_px']==pytest.approx(700)

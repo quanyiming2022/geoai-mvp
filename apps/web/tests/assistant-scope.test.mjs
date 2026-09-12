@@ -77,8 +77,26 @@ test('mock workflow reports submission outcome without leaving the workspace',()
 test('workflow AOI is rejected before save when it exceeds the target raster',()=>{
  const source=readFileSync('components/project-map.tsx','utf8');
  assert.match(source,/geometryInsideRaster/);
+ assert.match(source,/previewAoiCoverage/);
+ assert.ok(source.indexOf('previewAoiCoverage(data)')<source.indexOf("kind==='prompt'?createPrompt(data):createAoi(data)"));
+ assert.match(source,/本次 AOI 未保存，请重新绘制/);
  assert.match(source,/AOI 必须完整位于目标影像内/);
  assert.match(source,/重新绘制/);
+});
+
+test('workspace and extraction workflows start without implicit raster or AOI selection',()=>{
+ const map=readFileSync('components/project-map.tsx','utf8');
+ const mock=readFileSync('components/extraction-form.tsx','utf8');
+ const worker=readFileSync('components/tile-extraction-form.tsx','utf8');
+ assert.match(map,/useState<string\|null>\(null\)/);
+ assert.doesNotMatch(map,/saved\.selectedRaster/);
+ assert.doesNotMatch(map,/selectedRaster,selectedObject,selectedResult/);
+ assert.match(mock,/const \[aoiId,setAoiId\]=useState\(''\)/);
+ assert.doesNotMatch(mock,/useState\(aois\[0\]\?\.id/);
+ assert.match(worker,/useState\(initialContext\?\.aoi_id\?\?''\)/);
+ assert.match(worker,/useState\(initialContext\?\.raster_id\?\?''\)/);
+ assert.doesNotMatch(worker,/aois\.length===1/);
+ assert.doesNotMatch(worker,/initialRaster\(/);
 });
 
 test('archived assistant conversations can be deleted individually',()=>{

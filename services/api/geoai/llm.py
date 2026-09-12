@@ -137,7 +137,8 @@ def catalog(project_id,current):
 
 CAPABILITY_MESSAGE='当前范围超过单个模型窗口，需要分块扫描。大范围自动扫描尚未开放，请缩小 AOI，或绘制一个新的小范围。'
 
-from .map_window import resolve_full_aoi
+from .map_window import resolve_full_aoi,resolve_geometry_full_aoi
+from .spatial import PolygonInput
 
 def coverage_message(coverage):
     if coverage.get('reason')=='multi_tile_required':
@@ -379,7 +380,18 @@ class CoverageInput(BaseModel):
     raster_id:UUID
     aoi_id:UUID
 
+class GeometryCoverageInput(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    raster_id:UUID
+    geometry:PolygonInput
+
 @router.post('/projects/{project_id}/assistant/coverage')
 def check_aoi_coverage(project_id:UUID,data:CoverageInput,current:CurrentUser):
     coverage=resolve_full_aoi(project_id,current,data.raster_id,data.aoi_id)
     return {**coverage,'message':'当前范围可一次完整分析，已自动选择模型输入窗口。' if coverage['available'] else coverage_message(coverage)}
+
+@router.post('/projects/{project_id}/assistant/coverage-geometry')
+def check_geometry_coverage(project_id:UUID,data:GeometryCoverageInput,current:CurrentUser):
+    accessible(project_id,current)
+    coverage=resolve_geometry_full_aoi(project_id,current,data.raster_id,data.geometry.model_dump())
+    return {**coverage,'message':'当前范围可一次完整分析。' if coverage['available'] else coverage_message(coverage)}

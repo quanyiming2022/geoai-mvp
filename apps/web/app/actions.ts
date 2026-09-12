@@ -74,6 +74,12 @@ export async function createAoi(data: FormData) {
   catch (error) { return {error:errorMessage(error)}; }
 }
 
+export type AoiCoverage={available:boolean;reason?:string;message:string;aoi_bbox_width_px?:number;aoi_bbox_height_px?:number};
+export async function previewAoiCoverage(data:FormData):Promise<{data?:AoiCoverage;error?:string}> {
+  try {return {data:await api<AoiCoverage>(projectPath(data)+'/assistant/coverage-geometry',{method:'POST',body:JSON.stringify({raster_id:value(data,'raster_asset_id'),geometry:JSON.parse(value(data,'geometry'))})})};}
+  catch(error){return {error:errorMessage(error)};}
+}
+
 export async function createPrompt(data: FormData) {
   try { return {data:await api<{id:string;name:string}>(projectPath(data) + '/prompts', { method: 'POST', body: JSON.stringify({ name: value(data, 'name'), raster_asset_id: value(data, 'raster_asset_id'), class_label: value(data, 'class_label'), description: value(data, 'description'), geometry: JSON.parse(value(data, 'geometry')) }) })}; }
   catch (error) { return {error:errorMessage(error)}; }

@@ -8,7 +8,7 @@ function Submit({disabled}:{disabled:boolean}) { const {pending}=useFormStatus()
 export default function ExtractionForm({projectId,prompts,aois,idempotencyKey}:{projectId:string;prompts:VisualPrompt[];aois:Aoi[];idempotencyKey:string}) {
  const router=useRouter();
  const [selected,setSelected]=useState(prompts[0]?.id ?? '');
- const [aoiId,setAoiId]=useState(aois[0]?.id ?? '');
+ const [aoiId,setAoiId]=useState('');
  const [notice,setNotice]=useState<{kind:'success'|'error';message:string}|null>(null);
  const prompt=prompts.find(p=>p.id===selected);
  useEffect(()=>{const created=(event:Event)=>{const detail=(event as CustomEvent).detail;if(detail.kind==='aoi')setAoiId(detail.id);};window.addEventListener('workspace-resource-created',created);return()=>window.removeEventListener('workspace-resource-created',created);},[]);

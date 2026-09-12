@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from 'react';
-import {coveringRasters,initialRaster} from '../lib/raster-context.mjs';
+import {coveringRasters} from '../lib/raster-context.mjs';
 import { createTileJob } from '../app/actions';
 import {languageRequest} from '../app/control/models/language/actions';
 import PendingSubmit from './pending-submit';
@@ -10,9 +10,9 @@ export type AvailableEndpoint={id:string;name:string;model_release_id:string;mod
 export default function TileExtractionForm({projectId,prompts,rasters,aois,endpoints,idempotencyKey,initialContext}:{initialContext?:{raster_id?:string;aoi_id?:string;prompt_id?:string};projectId:string;prompts:VisualPrompt[];aois:Aoi[];rasters:RasterAsset[];endpoints:AvailableEndpoint[];idempotencyKey:string}) {
  const usable=rasters.filter(r=>r.status==='ready'&&(r.width??0)>=512&&(r.height??0)>=512&&(r.bands??0)>=3);
  const supports=prompts.filter(p=>usable.some(r=>r.id===p.raster_asset_id));
- const [step,setStep]=useState(0);const [aoiId,setAoiId]=useState(initialContext?.aoi_id??(aois.length===1?aois[0].id:''));
+ const [step,setStep]=useState(0);const [aoiId,setAoiId]=useState(initialContext?.aoi_id??'');
  const [endpointId,setEndpointId]=useState(endpoints[0]?.id??'');
- const [rasterId,setRasterId]=useState(initialRaster(usable,aois.find(a=>a.id===aoiId),initialContext?.raster_id));
+ const [rasterId,setRasterId]=useState(initialContext?.raster_id??'');
  const [promptId,setPromptId]=useState(initialContext?.prompt_id??supports[0]?.id??'');
  const [col,setCol]=useState('');const [row,setRow]=useState('');const [seed,setSeed]=useState('57');
  const [message,setMessage]=useState(''),[checking,setChecking]=useState(false),[coverageReason,setCoverageReason]=useState(''),[windowKey,setWindowKey]=useState('');

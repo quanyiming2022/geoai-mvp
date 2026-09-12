@@ -98,3 +98,21 @@ def resolve_full_aoi(project_id,current,raster_id,aoi_id):
                 return {**plan_full_aoi(ds,row['geometry']),'raster_id':str(raster_id),'aoi_id':str(aoi_id),'aoi_revision':row['revision']}
     except (ValueError,httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'暂时无法检查范围覆盖能力，请稍后重试。') from None
     finally:storage.close()
+
+
+def resolve_geometry_full_aoi(project_id,current,raster_id,geometry):
+    """Preflight an unsaved AOI against the authoritative COG without writing it."""
+    import rasterio,httpx
+    from fastapi import HTTPException
+    from .rasters import asset_for_user,provider
+    asset,cfg=asset_for_user(raster_id,current,project_id)
+    if asset.get('status')!='ready':raise HTTPException(422,'影像尚不可用。')
+    key=f"{asset.get('storage_project_id',asset['project_id'])}/rasters/{raster_id}/cog.tif"
+    if asset.get('cog_object_key')!=key:raise HTTPException(422,'影像尚不可用。')
+    storage=provider(cfg,internal=True)
+    try:
+        with rasterio.Env(GDAL_HTTP_TIMEOUT='15',GDAL_HTTP_MAX_RETRY='1'):
+            with rasterio.open(storage.create_signed_url(cfg.storage_bucket,key,60)) as ds:
+                return {**plan_full_aoi(ds,geometry),'raster_id':str(raster_id)}
+    except (ValueError,httpx.HTTPError,rasterio.errors.RasterioError):raise HTTPException(503,'暂时无法检查范围覆盖能力，请稍后重试。') from None
+    finally:storage.close()
