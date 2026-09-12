@@ -22,13 +22,28 @@ def run(mode):
             state={'uid':uid};STATE.write_text(json.dumps(state))
         else:state=json.loads(STATE.read_text())
         if mode=='cleanup':
+            # Lock before touching storage: a browser user may have linked an
+            # acceptance asset while it was visible in the shared library.
             with connection() as db:
                 assert str(db.execute('SELECT owner_id FROM projects WHERE id=%s',(state['project'],)).fetchone()[0])==state['uid']
                 assert db.execute("SELECT count(*) FROM jobs WHERE project_id=%s AND status IN ('queued','running')",(state['project'],)).fetchone()[0]==0
+                assets=[str(r[0]) for r in db.execute('SELECT id FROM raster_assets WHERE project_id=%s FOR UPDATE',(state['project'],))]
+                retained=[]
+                for asset in assets:
+                    referenced=db.execute("SELECT EXISTS(SELECT 1 FROM project_assets WHERE raster_asset_id=%s AND project_id<>%s) OR EXISTS(SELECT 1 FROM jobs WHERE raster_asset_id=%s AND project_id<>%s) OR EXISTS(SELECT 1 FROM visual_prompts WHERE raster_asset_id=%s AND project_id<>%s)",(asset,state['project'],asset,state['project'],asset,state['project'])).fetchone()[0]
+                    if referenced:retained.append(asset)
+                prefixes=[state['project']+'/rasters/'+asset+'/' for asset in retained]
                 objects=[x[0] for x in db.execute("SELECT name FROM storage.objects WHERE bucket_id=%s AND split_part(name,'/',1)=%s",(env['STORAGE_BUCKET'],state['project'])).fetchall()]
-            for name in objects:admin.request('DELETE','/storage/v1/object/'+env['STORAGE_BUCKET'],json={'prefixes':[name]}).raise_for_status()
-            with connection() as db:db.execute('DELETE FROM projects WHERE id=%s AND owner_id=%s',(state['project'],state['uid']));db.execute('DELETE FROM raster_assets WHERE project_id=%s',(state['project'],));db.commit()
-            admin.delete('/auth/v1/admin/users/'+state['uid']).raise_for_status();CREDS.unlink();print('PASS: isolated project, objects and ordinary account cleaned');return
+                for name in objects:
+                    if not any(name.startswith(prefix) for prefix in prefixes):
+                        admin.request('DELETE','/storage/v1/object/'+env['STORAGE_BUCKET'],json={'prefixes':[name]}).raise_for_status()
+                db.execute('DELETE FROM projects WHERE id=%s AND owner_id=%s',(state['project'],state['uid']))
+                for asset in assets:
+                    if asset in retained:
+                        db.execute("UPDATE raster_assets SET deleted_at=CASE WHEN EXISTS(SELECT 1 FROM project_assets WHERE raster_asset_id=%s AND deleted_at IS NULL) THEN deleted_at ELSE now() END WHERE id=%s",(asset,asset))
+                    else:db.execute('DELETE FROM raster_assets WHERE id=%s',(asset,))
+                db.commit()
+            admin.delete('/auth/v1/admin/users/'+state['uid']).raise_for_status();CREDS.unlink();print(f'PASS: isolated project/account cleaned; {len(retained)} externally referenced asset(s) and their files retained');return
         u=dotenv_values(CREDS);c.headers['Authorization']='Bearer '+c.post('/auth/login',json={'email':u['EMAIL'],'password':u['PASSWORD']}).raise_for_status().json()['access_token']
         if mode=='setup':
             state['project']=c.post('/projects',json={'name':'小范围完整分析 · 隔离验收'}).raise_for_status().json()['id'];STATE.write_text(json.dumps(state));base='/projects/'+state['project']

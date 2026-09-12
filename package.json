@@ -1,6 +1,6 @@
 {
   "name": "geoai-mvp",
-  "version": "0.2.0-p9c.1",
+  "version": "0.2.0-p9c.2",
   "private": true,
   "packageManager": "pnpm@12.3.4",
   "engines": {
